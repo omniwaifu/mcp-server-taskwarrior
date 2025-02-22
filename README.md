@@ -1,6 +1,6 @@
 # Taskwarrior MCP Server
 
-Node.js server implementing Model Context Protocol (MCP) for taskwarrior operations.
+Node.js server implementing Model Context Protocol (MCP) for [TaskWarrior](https://taskwarrior.org/) operations.
 
 ## Features
 
@@ -134,11 +134,11 @@ Note: all directories must be mounted to `/projects` by default.
 ```json
 {
   "mcpServers": {
-    "filesystem": {
+    "taskwarrior": {
       "command": "npx",
       "args": [
         "-y",
-        "@modelcontextprotocol/server-filesystem",
+        "@awwaiid/mcp-server-taskwarrior",
         "/Users/username/Desktop",
         "/path/to/other/allowed/dir"
       ]
