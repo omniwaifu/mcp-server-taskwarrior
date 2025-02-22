@@ -1,16 +1,14 @@
-# Filesystem MCP Server
+# Taskwarrior MCP Server
 
-Node.js server implementing Model Context Protocol (MCP) for filesystem operations.
+Node.js server implementing Model Context Protocol (MCP) for taskwarrior operations.
 
 ## Features
 
-- Read/write files
-- Create/list/delete directories
-- Move files/directories
-- Search files
-- Get file metadata
+- Create/list/delete tasks
+- Search tasks
+- Get task metadata
 
-**Note**: The server will only allow operations within directories specified via `args`.
+**Note**: This runs your local `task` binary, so that has to be set up!
 
 ## API
 
