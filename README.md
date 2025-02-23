@@ -11,6 +11,11 @@ Node.js server implementing Model Context Protocol (MCP) for [TaskWarrior](https
 
 **Note**: This runs your local `task` binary, so TaskWarrior needs to be installed and configured!
 
+> [WARNING]
+> This currently uses task `id` which is an unstable identifier; taskwarrior
+> sometimes renumbers tasks when new ones are added or removed. In the future
+> this should be more careful, using task UUID instead.
+
 ## API
 
 ### Tools
@@ -62,30 +67,14 @@ npm install -g mcp-server-taskwarrior
 
 Make sure you have TaskWarrior (`task`) installed and configured on your system.
 
-## Example Usage
+## Example usage ideas:
 
-1. List pending tasks:
-```
-get_next_tasks {}
-```
-
-2. Add a new high-priority task due tomorrow:
-```
-add_task {
-  "description": "Finish project proposal",
-  "due": "2024-02-23T17:00:00.000Z",
-  "priority": "H",
-  "project": "work",
-  "tags": ["urgent", "proposal"]
-}
-```
-
-3. Mark task as complete:
-```
-mark_task_done {
-  "identifier": "123"
-}
-```
+* What are my current work tasks?
+  * Executes: `task project:work next`
+* TODO: Call my sister (high priority)
+  * Executes: `task add priority:H Call my sister`
+* OK, I've called my sister
+  * Executes: `task done 1`
 
 ## License
 
