@@ -1,10 +1,10 @@
 {
   "name": "mcp-server-taskwarrior",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server for taskwarrior",
   "license": "MIT",
   "author": "Brock Wilcox",
-  "homepage": "https://thelackthereof.org/",
+  "homepage": "https://github.com/awwaiid/mcp-server-taskwarrior",
   "bugs": "https://github.com/awwaiid/mcp-server-taskwarrior/issues",
   "type": "module",
   "bin": {
