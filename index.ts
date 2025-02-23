@@ -137,9 +137,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: zodToJsonSchema(listPendingTasksRequest) as ToolInput,
       },
       {
-        name: "mark_task_done",
+        name: "mark_task_done", 
         description: "Mark a task as done (completed)",
         inputSchema: zodToJsonSchema(markTaskDoneRequest) as ToolInput,
+      },
+      {
+        name: "add_task",
+        description: "Add a new task",
+        inputSchema: zodToJsonSchema(addTaskRequest) as ToolInput,
       },
     ],
   };
@@ -177,6 +182,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           throw new Error(`Invalid arguments for mark_task_done: ${parsed.error}`);
         }
         const content = execSync(`task ${parsed.data.identifier} done`, { maxBuffer: 1024 * 1024 * 10 }).toString().trim();
+        return {
+          content: [{ type: "text", text: content }],
+        };
+      }
+
+      case "add_task": {
+        const parsed = addTaskRequest.safeParse(args);
+        if (!parsed.success) {
+          throw new Error(`Invalid arguments for add_task: ${parsed.error}`);
+        }
+
+        let task_args = [parsed.data.description];
+        
+        if (parsed.data.due) {
+          task_args.push(`due:${parsed.data.due}`);
+        }
+        if (parsed.data.priority) {
+          task_args.push(`priority:${parsed.data.priority}`);
+        }
+        if (parsed.data.project) {
+          task_args.push(`project:${parsed.data.project}`);
+        }
+        if (parsed.data.tags) {
+          for (let tag of parsed.data.tags) {
+            task_args.push(`+${tag}`);
+          }
+        }
+
+        const content = execSync(`task add ${task_args.join(" ")}`, { maxBuffer: 1024 * 1024 * 10 }).toString().trim();
         return {
           content: [{ type: "text", text: content }],
         };
