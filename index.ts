@@ -17,44 +17,6 @@ import { minimatch } from 'minimatch';
 
 import { execSync } from 'child_process';
 
-// Command line argument parsing
-const args = process.argv.slice(2);
-if (args.length === 0) {
-  console.error("Usage: mcp-server-taskwarrior <allowed-directory> [additional-directories...]");
-  process.exit(1);
-}
-
-// Normalize all paths consistently
-function normalizePath(p: string): string {
-  return path.normalize(p);
-}
-
-function expandHome(filepath: string): string {
-  if (filepath.startsWith('~/') || filepath === '~') {
-    return path.join(os.homedir(), filepath.slice(1));
-  }
-  return filepath;
-}
-
-// Store allowed directories in normalized form
-const allowedDirectories = args.map(dir =>
-  normalizePath(path.resolve(expandHome(dir)))
-);
-
-// Validate that all directories exist and are accessible
-await Promise.all(args.map(async (dir) => {
-  try {
-    const stats = await fs.stat(dir);
-    if (!stats.isDirectory()) {
-      console.error(`Error: ${dir} is not a directory`);
-      process.exit(1);
-    }
-  } catch (error) {
-    console.error(`Error accessing directory ${dir}:`, error);
-    process.exit(1);
-  }
-}));
-
 // Schema definitions
 
 // Base task schema that covers common TaskWarrior fields
@@ -233,7 +195,6 @@ async function runServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("MCP TaskWarrior Server running on stdio");
-  console.error("Allowed directories:", allowedDirectories);
 }
 
 runServer().catch((error) => {

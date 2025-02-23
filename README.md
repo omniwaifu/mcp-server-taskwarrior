@@ -5,9 +5,9 @@ Node.js server implementing Model Context Protocol (MCP) for [TaskWarrior](https
 ## Features
 
 - View pending tasks
+- Filter tasks by project and tags
 - Add new tasks with descriptions, due dates, priorities, projects and tags
 - Mark tasks as complete
-- Filter tasks by project and tags
 
 **Note**: This runs your local `task` binary, so TaskWarrior needs to be installed and configured!
 
