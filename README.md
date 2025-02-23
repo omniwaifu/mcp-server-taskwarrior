@@ -11,7 +11,7 @@ Node.js server implementing Model Context Protocol (MCP) for [TaskWarrior](https
 
 **Note**: This runs your local `task` binary, so TaskWarrior needs to be installed and configured!
 
-> [WARNING]
+> [!WARNING]
 > This currently uses task `id` which is an unstable identifier; taskwarrior
 > sometimes renumbers tasks when new ones are added or removed. In the future
 > this should be more careful, using task UUID instead.
