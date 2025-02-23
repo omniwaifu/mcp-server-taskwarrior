@@ -125,6 +125,9 @@ const server = new Server(
 );
 
 // Tool handlers
+const ToolInputSchema = ToolSchema.shape.inputSchema;
+type ToolInput = z.infer<typeof ToolInputSchema>;
+
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
