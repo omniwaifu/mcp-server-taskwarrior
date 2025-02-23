@@ -138,7 +138,7 @@ Note: all directories must be mounted to `/projects` by default.
       "command": "npx",
       "args": [
         "-y",
-        "@awwaiid/mcp-server-taskwarrior",
+        "mcp-server-taskwarrior",
         "/Users/username/Desktop",
         "/path/to/other/allowed/dir"
       ]

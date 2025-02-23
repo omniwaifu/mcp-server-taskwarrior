@@ -1,5 +1,5 @@
 {
-  "name": "@awwaiid/mcp-server-taskwarrior",
+  "name": "mcp-server-taskwarrior",
   "version": "1.0.0",
   "description": "MCP server for taskwarrior",
   "license": "MIT",
