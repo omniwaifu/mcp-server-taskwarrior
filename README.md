@@ -25,12 +25,14 @@ Node.js server implementing Model Context Protocol (MCP) for [TaskWarrior](https
 ### Tools
 
 - **get_next_tasks**
+
   - Get a list of all pending tasks
   - Optional filters:
     - `project`: Filter by project name
     - `tags`: Filter by one or more tags
 
 - **add_task**
+
   - Add a new task to TaskWarrior
   - Required:
     - `description`: Task description text
@@ -54,10 +56,7 @@ Add this to your `claude_desktop_config.json`:
   "mcpServers": {
     "taskwarrior": {
       "command": "npx",
-      "args": [
-        "-y",
-        "mcp-server-taskwarrior"
-      ]
+      "args": ["-y", "mcp-server-taskwarrior"]
     }
   }
 }
@@ -73,12 +72,12 @@ Make sure you have TaskWarrior (`task`) installed and configured on your system.
 
 ## Example usage ideas:
 
-* What are my current work tasks?
-  * Executes: `task project:work next`
-* TODO: Call my sister (high priority)
-  * Executes: `task add priority:H Call my sister`
-* OK, I've called my sister
-  * Executes: `task done 1`
+- What are my current work tasks?
+  - Executes: `task project:work next`
+- TODO: Call my sister (high priority)
+  - Executes: `task add priority:H Call my sister`
+- OK, I've called my sister
+  - Executes: `task done 1`
 
 ## License
 

@@ -9,13 +9,13 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import fs from "fs/promises";
 import path from "path";
-import os from 'os';
+import os from "os";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { diffLines, createTwoFilesPatch } from 'diff';
-import { minimatch } from 'minimatch';
+import { diffLines, createTwoFilesPatch } from "diff";
+import { minimatch } from "minimatch";
 
-import { execSync } from 'child_process';
+import { execSync } from "child_process";
 
 // Schema definitions
 
@@ -28,19 +28,30 @@ const taskSchema = z.object({
   modified: z.string().datetime().optional(), // ISO timestamp
   due: z.string().optional(), // ISO timestamp
   priority: z.enum(["H", "M", "L"]).optional(),
-  project: z.string().regex(/^[a-z.]+$/).optional(),
+  project: z
+    .string()
+    .regex(/^[a-z.]+$/)
+    .optional(),
   tags: z.array(z.string().regex(/^a-z$/)).optional(),
 });
 
 // Request schemas for different operations
 const listPendingTasksRequest = z.object({
-  project: z.string().regex(/^[a-z.]+$/).optional(),
+  project: z
+    .string()
+    .regex(/^[a-z.]+$/)
+    .optional(),
   tags: z.array(z.string().regex(/^a-z$/)).optional(),
 });
 
 const listTasksRequest = z.object({
-  status: z.enum(["pending", "completed", "deleted", "waiting", "recurring"]).optional(),
-  project: z.string().regex(/^[a-z.]+$/).optional(),
+  status: z
+    .enum(["pending", "completed", "deleted", "waiting", "recurring"])
+    .optional(),
+  project: z
+    .string()
+    .regex(/^[a-z.]+$/)
+    .optional(),
   tags: z.array(z.string().regex(/^a-z$/)).optional(),
 });
 
@@ -57,7 +68,10 @@ const addTaskRequest = z.object({
   // Optional fields that can be set when adding
   due: z.string().optional(), // ISO timestamp
   priority: z.enum(["H", "M", "L"]).optional(),
-  project: z.string().regex(/^[a-z.]+$/).optional(),
+  project: z
+    .string()
+    .regex(/^[a-z.]+$/)
+    .optional(),
   tags: z.array(z.string().regex(/^a-z$/)).optional(),
 });
 
@@ -99,7 +113,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: zodToJsonSchema(listPendingTasksRequest) as ToolInput,
       },
       {
-        name: "mark_task_done", 
+        name: "mark_task_done",
         description: "Mark a task as done (completed)",
         inputSchema: zodToJsonSchema(markTaskDoneRequest) as ToolInput,
       },
@@ -112,7 +126,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     const { name, arguments: args } = request.params;
@@ -121,18 +134,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "get_next_tasks": {
         const parsed = listPendingTasksRequest.safeParse(args);
         if (!parsed.success) {
-          throw new Error(`Invalid arguments for get_next_tasks: ${parsed.error}`);
+          throw new Error(
+            `Invalid arguments for get_next_tasks: ${parsed.error}`,
+          );
         }
         let task_args = [];
         if (parsed.data.tags) {
-          for(let tag of parsed.data.tags) {
+          for (let tag of parsed.data.tags) {
             task_args.push(`+${tag}`);
           }
         }
         if (parsed.data.project) {
-            task_args.push(`project:${parsed.data.project}`);
+          task_args.push(`project:${parsed.data.project}`);
         }
-        const content = execSync(`task limit: ${task_args.join(" ")} next`, { maxBuffer: 1024 * 1024 * 10 }).toString().trim();
+        const content = execSync(`task limit: ${task_args.join(" ")} next`, {
+          maxBuffer: 1024 * 1024 * 10,
+        })
+          .toString()
+          .trim();
         return {
           content: [{ type: "text", text: content }],
         };
@@ -141,9 +160,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "mark_task_done": {
         const parsed = markTaskDoneRequest.safeParse(args);
         if (!parsed.success) {
-          throw new Error(`Invalid arguments for mark_task_done: ${parsed.error}`);
+          throw new Error(
+            `Invalid arguments for mark_task_done: ${parsed.error}`,
+          );
         }
-        const content = execSync(`task ${parsed.data.identifier} done`, { maxBuffer: 1024 * 1024 * 10 }).toString().trim();
+        const content = execSync(`task ${parsed.data.identifier} done`, {
+          maxBuffer: 1024 * 1024 * 10,
+        })
+          .toString()
+          .trim();
         return {
           content: [{ type: "text", text: content }],
         };
@@ -156,7 +181,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
 
         let task_args = [parsed.data.description];
-        
+
         if (parsed.data.due) {
           task_args.push(`due:${parsed.data.due}`);
         }
@@ -172,7 +197,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }
         }
 
-        const content = execSync(`task add ${task_args.join(" ")}`, { maxBuffer: 1024 * 1024 * 10 }).toString().trim();
+        const content = execSync(`task add ${task_args.join(" ")}`, {
+          maxBuffer: 1024 * 1024 * 10,
+        })
+          .toString()
+          .trim();
         return {
           content: [{ type: "text", text: content }],
         };
