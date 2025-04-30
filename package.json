@@ -19,17 +19,17 @@
     "watch": "tsc --watch"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "0.5.0",
-    "diff": "^5.1.0",
-    "glob": "^10.3.10",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "diff": "^7.0.0",
+    "glob": "^11.0.0",
     "minimatch": "^10.0.1",
     "zod-to-json-schema": "^3.23.5"
   },
   "devDependencies": {
-    "@types/diff": "^5.0.9",
+    "@types/diff": "^7.0.0",
     "@types/minimatch": "^5.1.2",
-    "@types/node": "^22",
-    "shx": "^0.3.4",
+    "@types/node": "^22.15.3",
+    "shx": "^0.4.0",
     "typescript": "^5.3.3"
   }
 }
