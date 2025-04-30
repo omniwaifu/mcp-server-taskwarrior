@@ -122,102 +122,184 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         description: "Add a new task",
         inputSchema: zodToJsonSchema(addTaskRequest) as ToolInput,
       },
+      {
+        name: "list_tasks_json",
+        description: "Get a list of tasks as JSON objects based on filters",
+        inputSchema: zodToJsonSchema(listTasksRequest) as ToolInput,
+      },
     ],
   };
 });
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  try {
-    const { name, arguments: args } = request.params;
+server.setRequestHandler(
+  CallToolRequestSchema,
+  async (request: z.infer<typeof CallToolRequestSchema>) => {
+    try {
+      const { name, arguments: args } = request.params;
 
-    switch (name) {
-      case "get_next_tasks": {
-        const parsed = listPendingTasksRequest.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(
-            `Invalid arguments for get_next_tasks: ${parsed.error}`,
-          );
-        }
-        let task_args = [];
-        if (parsed.data.tags) {
-          for (let tag of parsed.data.tags) {
-            task_args.push(`+${tag}`);
+      switch (name) {
+        case "get_next_tasks": {
+          const parsed = listPendingTasksRequest.safeParse(args);
+          if (!parsed.success) {
+            throw new Error(
+              `Invalid arguments for get_next_tasks: ${parsed.error}`,
+            );
           }
-        }
-        if (parsed.data.project) {
-          task_args.push(`project:${parsed.data.project}`);
-        }
-        const content = execSync(`task limit: ${task_args.join(" ")} next`, {
-          maxBuffer: 1024 * 1024 * 10,
-        })
-          .toString()
-          .trim();
-        return {
-          content: [{ type: "text", text: content }],
-        };
-      }
-
-      case "mark_task_done": {
-        const parsed = markTaskDoneRequest.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(
-            `Invalid arguments for mark_task_done: ${parsed.error}`,
-          );
-        }
-        const content = execSync(`task ${parsed.data.identifier} done`, {
-          maxBuffer: 1024 * 1024 * 10,
-        })
-          .toString()
-          .trim();
-        return {
-          content: [{ type: "text", text: content }],
-        };
-      }
-
-      case "add_task": {
-        const parsed = addTaskRequest.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Invalid arguments for add_task: ${parsed.error}`);
-        }
-
-        let task_args = [parsed.data.description];
-
-        if (parsed.data.due) {
-          task_args.push(`due:${parsed.data.due}`);
-        }
-        if (parsed.data.priority) {
-          task_args.push(`priority:${parsed.data.priority}`);
-        }
-        if (parsed.data.project) {
-          task_args.push(`project:${parsed.data.project}`);
-        }
-        if (parsed.data.tags) {
-          for (let tag of parsed.data.tags) {
-            task_args.push(`+${tag}`);
+          let task_args = [];
+          if (parsed.data.tags) {
+            for (let tag of parsed.data.tags) {
+              task_args.push(`+${tag}`);
+            }
           }
+          if (parsed.data.project) {
+            task_args.push(`project:${parsed.data.project}`);
+          }
+          const content = execSync(`task limit: ${task_args.join(" ")} next`, {
+            maxBuffer: 1024 * 1024 * 10,
+          })
+            .toString()
+            .trim();
+          return {
+            content: [{ type: "text", text: content }],
+          };
         }
 
-        const content = execSync(`task add ${task_args.join(" ")}`, {
-          maxBuffer: 1024 * 1024 * 10,
-        })
-          .toString()
-          .trim();
-        return {
-          content: [{ type: "text", text: content }],
-        };
-      }
+        case "mark_task_done": {
+          const parsed = markTaskDoneRequest.safeParse(args);
+          if (!parsed.success) {
+            throw new Error(
+              `Invalid arguments for mark_task_done: ${parsed.error}`,
+            );
+          }
+          const content = execSync(`task ${parsed.data.identifier} done`, {
+            maxBuffer: 1024 * 1024 * 10,
+          })
+            .toString()
+            .trim();
+          return {
+            content: [{ type: "text", text: content }],
+          };
+        }
 
-      default:
-        throw new Error(`Unknown tool: ${name}`);
+        case "add_task": {
+          const parsed = addTaskRequest.safeParse(args);
+          if (!parsed.success) {
+            throw new Error(`Invalid arguments for add_task: ${parsed.error}`);
+          }
+
+          let task_args = [parsed.data.description];
+
+          if (parsed.data.due) {
+            task_args.push(`due:${parsed.data.due}`);
+          }
+          if (parsed.data.priority) {
+            task_args.push(`priority:${parsed.data.priority}`);
+          }
+          if (parsed.data.project) {
+            task_args.push(`project:${parsed.data.project}`);
+          }
+          if (parsed.data.tags) {
+            task_args.push(...parsed.data.tags.map((tag: string) => `+${tag}`));
+          }
+
+          // 1. Add the task
+          const addOutput = execSync(`task add ${task_args.join(" ")}`, {
+            maxBuffer: 1024 * 1024 * 10,
+          })
+            .toString()
+            .trim();
+          // Log confirmation message for debugging/server logs
+          console.error(`Task add output: ${addOutput}`);
+
+          // 2. Immediately export the *most recently added* task as JSON
+          const jsonOutput = execSync(`task limit:1 entry- export`, {
+            maxBuffer: 1024 * 1024 * 10,
+          })
+            .toString()
+            .trim();
+
+          // 3. Check if JSON output is valid and extract the single task object
+          let taskJsonString = "";
+          if (jsonOutput.startsWith("[")) {
+            try {
+              const taskArray = JSON.parse(jsonOutput);
+              if (taskArray.length > 0) {
+                // Stringify just the single task object
+                taskJsonString = JSON.stringify(taskArray[0]);
+              } else {
+                // This case should ideally not happen with limit:1 entry- if the add was successful
+                throw new Error(
+                  "Task added, but failed to retrieve its JSON immediately after (empty array returned).",
+                );
+              }
+            } catch (parseError) {
+              const message =
+                parseError instanceof Error
+                  ? parseError.message
+                  : String(parseError);
+              throw new Error(
+                `Task added, but failed to parse JSON output from task export: ${message}`,
+              );
+            }
+          } else {
+            // Handle cases where task export might not return a JSON array (e.g., errors, unexpected output)
+            throw new Error(
+              `Task added, but 'task export' did not return a JSON array. Output: ${jsonOutput}`,
+            );
+          }
+
+          // 4. Return the JSON string of the single task as text content
+          return {
+            content: [{ type: "text", text: taskJsonString }],
+          };
+        }
+
+        case "list_tasks_json": {
+          const parsed = listTasksRequest.safeParse(args); // Use existing filter schema
+          if (!parsed.success) {
+            throw new Error(
+              `Invalid arguments for list_tasks_json: ${parsed.error}`,
+            );
+          }
+
+          // Construct filter arguments for the task command
+          let filter_args = [];
+          if (parsed.data.status)
+            filter_args.push(`status:${parsed.data.status}`);
+          if (parsed.data.project)
+            filter_args.push(`project:${parsed.data.project}`);
+          if (parsed.data.tags)
+            filter_args.push(
+              ...parsed.data.tags.map((tag: string) => `+${tag}`),
+            );
+          // Add other filters like limit if schema supports them
+
+          // Execute task export
+          const jsonOutput = execSync(`task ${filter_args.join(" ")} export`, {
+            maxBuffer: 1024 * 1024 * 10,
+          })
+            .toString()
+            .trim();
+
+          // Return the raw JSON string (which represents an array)
+          return {
+            content: [{ type: "text", text: jsonOutput }],
+          };
+        }
+
+        default:
+          throw new Error(`Unknown tool: ${name}`);
+      }
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      return {
+        content: [{ type: "text", text: `Error: ${errorMessage}` }],
+        isError: true,
+      };
     }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return {
-      content: [{ type: "text", text: `Error: ${errorMessage}` }],
-      isError: true,
-    };
-  }
-});
+  },
+);
 
 // Start server
 async function runServer() {
