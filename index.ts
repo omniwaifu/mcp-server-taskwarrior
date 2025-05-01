@@ -30,18 +30,18 @@ const taskSchema = z.object({
   priority: z.enum(["H", "M", "L"]).optional(),
   project: z
     .string()
-    .regex(/^[a-z.]+$/)
+    .regex(/^[a-zA-Z0-9 ._-]+$/)
     .optional(),
-  tags: z.array(z.string().regex(/^a-z$/)).optional(),
+  tags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).optional(),
 });
 
 // Request schemas for different operations
 const listPendingTasksRequest = z.object({
   project: z
     .string()
-    .regex(/^[a-z.]+$/)
+    .regex(/^[a-zA-Z0-9 ._-]+$/)
     .optional(),
-  tags: z.array(z.string().regex(/^a-z$/)).optional(),
+  tags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).optional(),
 });
 
 const listTasksRequest = z.object({
@@ -50,9 +50,9 @@ const listTasksRequest = z.object({
     .optional(),
   project: z
     .string()
-    .regex(/^[a-z.]+$/)
+    .regex(/^[a-zA-Z0-9 ._-]+$/)
     .optional(),
-  tags: z.array(z.string().regex(/^a-z$/)).optional(),
+  tags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).optional(),
 });
 
 const getTaskRequest = z.object({
@@ -70,9 +70,9 @@ const addTaskRequest = z.object({
   priority: z.enum(["H", "M", "L"]).optional(),
   project: z
     .string()
-    .regex(/^[a-z.]+$/)
+    .regex(/^[a-zA-Z0-9 ._-]+$/)
     .optional(),
-  tags: z.array(z.string().regex(/^a-z$/)).optional(),
+  tags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).optional(),
 });
 
 // Response schemas
