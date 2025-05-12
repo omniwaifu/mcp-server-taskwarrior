@@ -10,112 +10,147 @@ import {
   getTaskByUuid,
 } from "../../utils/taskwarrior.js";
 
+// --- Standard MCP Interfaces (should ideally be imported) ---
+interface JsonContentItem {
+  type: "json";
+  data: any;
+}
+
+interface TextContentItem {
+  type: "text";
+  text: string;
+}
+
+interface McpToolResponse {
+  tool_name: string;
+  status: "success" | "error";
+  result?: {
+    content: Array<JsonContentItem | TextContentItem>;
+  };
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+}
+// --- End MCP Interfaces ---
+
 export async function handleAddTask(
   args: AddTaskRequest,
-): Promise<TaskWarriorTask[] | ErrorResponse> {
-  console.log("handleAddTask called with:", args);
+  toolName: string = "addTask", // MCP Router usually provides this
+): Promise<McpToolResponse> {
+  console.log(`${toolName} called with:`, args);
 
-  const addCommandArgs: string[] = ["add"];
-  addCommandArgs.push(`"${args.description.replace(/"/g, '\\"')}"`); // Ensure description is quoted and internal quotes escaped
+  const commandArgs: string[] = ["add"];
+  // Ensure description is quoted and internal quotes escaped for the shell command
+  commandArgs.push(`'${args.description.replace(/'/g, "'\\''")}'`);
 
-  if (args.due) {
-    addCommandArgs.push(`due:${args.due}`);
-  }
-  if (args.priority) {
-    addCommandArgs.push(`priority:${args.priority}`);
-  }
-  if (args.project) {
-    addCommandArgs.push(`project:${args.project}`);
-  }
+  if (args.due) commandArgs.push(`due:${args.due}`);
+  if (args.priority) commandArgs.push(`priority:${args.priority}`);
+  if (args.project) commandArgs.push(`project:${args.project}`);
   if (args.tags && args.tags.length > 0) {
-    args.tags.forEach((tag) => addCommandArgs.push(`+${tag}`));
+    args.tags.forEach((tag) => commandArgs.push(`+${tag}`));
   }
 
   try {
-    // Construct the command arguments
-    const commandArgs = [args.description];
-    // ... (optional fields handling) ...
-    if (args.due) commandArgs.push(`due:${args.due}`);
-    if (args.priority) commandArgs.push(`priority:${args.priority}`);
-    if (args.project) commandArgs.push(`project:${args.project}`);
-    if (args.tags && args.tags.length > 0) {
-      args.tags.forEach((tag) => commandArgs.push(`+${tag}`));
-    }
-
-    // Execute the command to add the task
-    // Taskwarrior add command usually outputs a message like "Created task 123."
-    // We need to capture the UUID of the newly created task.
-    // One way is to list tasks matching the description immediately after adding,
-    // assuming descriptions are unique enough for this context, or use `task _get <id>.uuid` if we can get the ID.
-    // A safer way: `task add ...` then `task /<description_pattern>/ limit:1 export`
-    // Or, if `task add` outputs the ID: task <ID> export to get its JSON and thus UUID.
     const addOutput = executeTaskWarriorCommandRaw(commandArgs);
     console.log("TaskWarrior add output:", addOutput);
 
-    // Extract UUID. This is a bit fragile and depends on Taskwarrior output format.
-    // Example output: "Created task 1 (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)."
-    // Or just "Created task 1."
-    // If it gives the ID, we can then fetch by ID.
     let createdTaskUuid: string | undefined;
-    const idMatch = addOutput.match(/Created task (\d+)/);
+    const idMatch = addOutput.match(/Created task (\d+)/i); // Made case-insensitive for safety
+    const newUuidMatch = addOutput.match(/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/);
 
-    if (idMatch && idMatch[1]) {
+    if (newUuidMatch && newUuidMatch[1]) {
+      createdTaskUuid = newUuidMatch[1];
+      console.log(`Extracted new task UUID directly from output: ${createdTaskUuid}`);
+    } else if (idMatch && idMatch[1]) {
       const newTaskId = idMatch[1];
-      // Fetch the task by its new ID to get its full details including UUID
+      console.log(`Extracted new task ID from output: ${newTaskId}. Fetching details...`);
       const newlyAddedTasks = await executeTaskWarriorCommandJson([
         newTaskId,
         "export",
       ]);
-      if (newlyAddedTasks.length > 0) {
+      if (newlyAddedTasks.length > 0 && newlyAddedTasks[0].uuid) {
         createdTaskUuid = newlyAddedTasks[0].uuid;
-      }
-    } else {
-      // Fallback: if ID not in output, try to find by exact description (less reliable)
-      // This assumes the description is unique enough for an immediate fetch.
-      console.warn(
-        "Could not parse new task ID from 'add' output. Falling back to description match.",
-      );
-      const newTasks = await executeTaskWarriorCommandJson([
-        `description:"${args.description.replace(/"/g, '\\"')}"`, // Ensure description is quoted and escaped
-        "limit:1",
-        "export",
-      ]);
-      if (newTasks.length > 0) {
-        createdTaskUuid = newTasks[0].uuid;
+      } else {
+        console.warn(`Could not get UUID for task ID ${newTaskId} after creation.`);
       }
     }
 
     if (!createdTaskUuid) {
-      return {
-        error: "Failed to retrieve the newly created task or its UUID.",
-        details: "Task added but UUID could not be determined.",
-      };
+      // Last resort: try to find by exact description (less reliable)
+      console.warn(
+        "Could not parse new task ID or UUID from 'add' output. Falling back to description match.",
+      );
+      // Using single quotes for description in the command, and escaping internal single quotes
+      const descriptionForSearch = args.description.replace(/'/g, "'\\''");
+      const newTasks = await executeTaskWarriorCommandJson([
+        `description:'${descriptionForSearch}'`, // Ensure description is quoted and escaped
+        "limit:1",
+        "export",
+      ]);
+      if (newTasks.length > 0 && newTasks[0].uuid) {
+        createdTaskUuid = newTasks[0].uuid;
+      } else {
+         return {
+          tool_name: toolName,
+          status: "error",
+          error: {
+            code: "TASK_CREATION_UUID_FAILURE",
+            message: "Failed to determine UUID of the newly created task.",
+            details: "Task might have been added, but its UUID could not be retrieved. TaskWarrior output: " + addOutput,
+          },
+           result: {
+            content: [
+              { type: "text", text: "Failed to determine UUID of the newly created task. TaskWarrior output: " + addOutput },
+            ],
+          },
+        };
+      }
     }
 
-    // Fetch the task by its UUID to return the full object
-    const createdTask = await getTaskByUuid(createdTaskUuid);
-    if (!createdTask) {
-      // Should not happen if UUID was just found
-      return {
-        error: `Failed to fetch newly created task with UUID: ${createdTaskUuid}`,
-        details:
-          "Task was added and UUID determined, but subsequent fetch failed.",
-      };
-    }
-    return [createdTask];
+    const createdTask = await getTaskByUuid(createdTaskUuid); // getTaskByUuid already handles not found by throwing
+
+    return {
+      tool_name: toolName,
+      status: "success",
+      result: {
+        content: [
+          {
+            type: "json",
+            data: [createdTask], // Return the single created task in an array, as per original Promise<TaskWarriorTask[]>
+          },
+        ],
+      },
+    };
   } catch (error: unknown) {
-    console.error("Error in handleAddTask:", error);
-    let message = "Failed to add task.";
+    console.error(`Error in ${toolName} handler:`, error);
+    let message = `Failed to execute ${toolName}.`;
     let details: string | undefined;
+
     if (error instanceof Error) {
       message = error.message;
       details = error.stack;
     } else if (typeof error === "string") {
       message = error;
     }
+
     return {
-      error: message,
-      details,
+      tool_name: toolName,
+      status: "error",
+      error: {
+        code: "TOOL_EXECUTION_ERROR",
+        message: message,
+        details: details,
+      },
+      result: {
+        content: [
+          {
+            type: "text",
+            text: `Error in ${toolName}: ${message}`,
+          },
+        ],
+      },
     };
   }
 }

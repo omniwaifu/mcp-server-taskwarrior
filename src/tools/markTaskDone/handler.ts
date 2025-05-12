@@ -11,60 +11,131 @@ import {
 // but getTaskByIdOrUuid should handle both directly for fetching.
 // import { isValidUuid, getIdentifierType } from "../../utils/uuid.js";
 
+// --- Standard MCP Interfaces (should ideally be imported) ---
+interface JsonContentItem {
+  type: "json";
+  data: any;
+}
+
+interface TextContentItem {
+  type: "text";
+  text: string;
+}
+
+interface McpToolResponse {
+  tool_name: string;
+  status: "success" | "error";
+  result?: {
+    content: Array<JsonContentItem | TextContentItem>;
+  };
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+}
+// --- End MCP Interfaces ---
+
 export const markTaskDoneHandler = async (
   args: MarkTaskDoneRequest,
-): Promise<TaskWarriorTask | ErrorResponse> => {
-  // Validation is now done by src/index.ts
-  // const validationResult = MarkTaskDoneRequestSchema.safeParse(body);
-  // if (!validationResult.success) { ... }
-
+  toolName: string = "markTaskDone", // MCP Router usually provides this
+): Promise<McpToolResponse> => {
   const { uuid } = args;
 
   try {
-    const taskToMark = await getTaskByUuid(uuid);
-    if (!taskToMark) {
-      return {
-        error: `Task with UUID '${uuid}' not found. Cannot mark as done.`,
-      };
-    }
+    const taskToMark = await getTaskByUuid(uuid); // Throws if not found
 
     if (taskToMark.status === "completed") {
       console.log(`Task '${uuid}' is already completed.`);
-      return taskToMark;
+      // Return success with the already completed task
+      return {
+        tool_name: toolName,
+        status: "success",
+        result: {
+          content: [
+            {
+              type: "json",
+              data: taskToMark,
+            },
+          ],
+        },
+      };
     }
 
     executeTaskWarriorCommandRaw([uuid, "done"]);
 
-    const updatedTask = await getTaskByUuid(uuid);
-    if (!updatedTask) {
-      return {
-        error: `Task with UUID '${uuid}' was marked done, but could not be retrieved afterwards.`,
-        details:
-          "The task modification command seemed to succeed but the task vanished.",
-      };
-    }
+    const updatedTask = await getTaskByUuid(uuid); // Refetch to confirm status
+
     if (updatedTask.status !== "completed") {
       console.warn(
-        `Task '${uuid}' status is '${updatedTask.status}' after marking done.`,
+        `Task '${uuid}' status is '${updatedTask.status}' after marking done. Expected 'completed'.`,
       );
       return {
-        error: `Task with UUID '${uuid}' was attempted to be marked done, but its status is still '${updatedTask.status}'.`,
-        details:
-          "This might indicate an issue with Taskwarrior hooks or a race condition.",
+        tool_name: toolName,
+        status: "error",
+        error: {
+          code: "STATUS_NOT_COMPLETED",
+          message: `Task with UUID '${uuid}' was attempted to be marked done, but its status is '${updatedTask.status}' instead of 'completed'.`,
+          details:
+            "This might indicate an issue with Taskwarrior hooks, a race condition, or the 'done' command not behaving as expected.",
+        },
+        result: {
+          content: [
+            {
+              type: "text",
+              text: `Task '${uuid}' status is '${updatedTask.status}' after marking done. Expected 'completed'.`,
+            },
+          ],
+        },
       };
     }
 
-    return updatedTask;
+    // Success - task is now marked done
+    return {
+      tool_name: toolName,
+      status: "success",
+      result: {
+        content: [
+          {
+            type: "json",
+            data: updatedTask,
+          },
+        ],
+      },
+    };
   } catch (error: unknown) {
-    console.error("Error in markTaskDoneHandler:", error);
-    let message = "Failed to mark task as done.";
+    console.error(`Error in ${toolName} handler for UUID '${uuid}':`, error);
+    let message = `Failed to execute ${toolName}.`;
     let details: string | undefined;
+    let errorCode = "TOOL_EXECUTION_ERROR";
+
     if (error instanceof Error) {
       message = error.message;
+      // Check if the error from getTaskByUuid was "not found"
+      if (message.toLowerCase().includes("not found")) {
+        errorCode = "TASK_NOT_FOUND";
+      }
       details = error.stack;
     } else if (typeof error === "string") {
       message = error;
     }
-    return { error: message, details };
+
+    return {
+      tool_name: toolName,
+      status: "error",
+      error: {
+        code: errorCode,
+        message: message,
+        details: details,
+      },
+      result: { // Optionally, provide a text error in content as well
+        content: [
+          {
+            type: "text",
+            text: `Error in ${toolName} for UUID '${uuid}': ${message}`,
+          },
+        ],
+      },
+    };
   }
 };

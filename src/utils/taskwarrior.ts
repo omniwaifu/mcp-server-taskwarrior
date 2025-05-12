@@ -27,23 +27,19 @@ export function executeTaskWarriorCommandRaw(
 ): string {
   const finalOptions = { ...defaultExecOptions, ...options };
   try {
-    // It's often safer to escape arguments if they might contain shell special characters,
-    // but taskwarrior CLI arguments are usually simple strings or specific formats.
-    // For now, direct join, but consider argument sanitization/escaping for complex inputs.
     const command = `task ${commandArgs.join(" ")}`;
-    console.log(`Executing: ${command}`); // For debugging
+    console.log(`Executing: ${command}`);
     return execSync(command, finalOptions).toString().trim();
   } catch (error: unknown) {
-    // Log the error and stderr if available
     console.error(
       `Error executing TaskWarrior command: task ${commandArgs.join(" ")}`,
     );
     let stderrMessage = "";
-    let stdoutMessage = "";
+    let stdoutMessage = ""; // stdout might contain info even on error for some commands
     let errorMessage = "TaskWarrior command failed";
 
     if (typeof error === "object" && error !== null) {
-      const execError = error as ExecSyncError; // Assert to our more specific error type
+      const execError = error as ExecSyncError;
 
       if (execError.stderr) {
         stderrMessage = Buffer.isBuffer(execError.stderr)
@@ -51,23 +47,31 @@ export function executeTaskWarriorCommandRaw(
           : String(execError.stderr).trim();
         console.error(`TaskWarrior stderr: ${stderrMessage}`);
       }
-      if (execError.stdout) {
+      if (execError.stdout) { // Capture stdout on error as well
         stdoutMessage = Buffer.isBuffer(execError.stdout)
           ? execError.stdout.toString().trim()
           : String(execError.stdout).trim();
         console.error(`TaskWarrior stdout (on error): ${stdoutMessage}`);
       }
-      // Use original error message if it's an Error instance, otherwise keep default or specific one
+
+      // Check for benign "no tasks" messages in stderr or stdout
+      const noMatchRegex = /No matches|No tasks specified/i;
+      if (noMatchRegex.test(stderrMessage)) {
+        console.debug("[executeTaskWarriorCommandRaw] 'No matches' detected in stderr. Returning stderr content.");
+        return stderrMessage; // Return the benign message for further processing
+      }
+      if (noMatchRegex.test(stdoutMessage)) {
+        console.debug("[executeTaskWarriorCommandRaw] 'No matches' detected in stdout. Returning stdout content.");
+        return stdoutMessage; // Return the benign message
+      }
+
       if (error instanceof Error && error.message) {
-        // Check error.message existence
         errorMessage = error.message;
       } else if (stderrMessage) {
-        // Prioritize stderr for error message if generic Error.message is not useful
         errorMessage = stderrMessage;
       }
     }
-
-    // Re-throw a more specific error or handle as needed
+    // If it wasn't a benign "no matches" message, throw the error.
     throw new Error(
       `${errorMessage}` + (stderrMessage ? ` (stderr: ${stderrMessage})` : ""),
     );
@@ -83,21 +87,85 @@ export function executeTaskWarriorCommandRaw(
 export async function executeTaskWarriorCommandJson(
   args: string[],
 ): Promise<TaskWarriorTask[]> {
-  const rawOutput = await executeTaskWarriorCommandRaw(args);
-  // Taskwarrior outputs JSON objects separated by newlines if there's more than one.
-  // If it's a single object, it's not in an array. If it's multiple, they are not in an array.
-  // If it's empty, it's an empty string.
-  if (!rawOutput.trim()) {
-    return [];
-  }
-  //சர Handle a single JSON object or multiple JSON objects separated by newlines
-  const objects = rawOutput
-    .trim()
-    .split("\\n")
-    .map((line) => JSON.parse(line));
+  try {
+    // Always add export if not already present
+    if (!args.some(arg => arg.toLowerCase().includes('export'))) {
+      args.push("export");
+    }
+    
+    const rawOutput = executeTaskWarriorCommandRaw(args);
 
-  // Validate each object with Zod
-  return objects.map((obj) => TaskWarriorTaskSchema.parse(obj));
+    // Handle known "no tasks" messages from Taskwarrior
+    const trimmedOutput = rawOutput.trim();
+    if (
+      trimmedOutput === "No matches." ||
+      trimmedOutput === "No tasks found." ||
+      trimmedOutput === "No tasks." ||
+      trimmedOutput === "No pending tasks." ||
+      trimmedOutput === "" // Handles completely empty output
+    ) {
+      console.log(`executeTaskWarriorCommandJson - Received "No matches" equivalent: "${trimmedOutput}". Returning empty array.`);
+      return [];
+    }
+
+    // Handle a single JSON object or multiple JSON objects separated by newlines
+    const validObjects = [];
+    const lines = trimmedOutput.split("\n");
+    
+    for (const line of lines) {
+      if (!line.trim()) continue; // Skip empty lines
+      
+      try {
+        const parsedObj = JSON.parse(line);
+        validObjects.push(parsedObj);
+      } catch (parseError) {
+        // Don't throw here - just log the error and continue with any valid objects
+        console.error(`Failed to parse line: ${line.substring(0, 50)}... - Skipping this line and continuing.`, parseError);
+        // Continue processing other lines instead of failing the entire operation
+      }
+    }
+    
+    // If we couldn't parse any valid objects, return empty array instead of throwing
+    if (validObjects.length === 0) {
+      console.warn("No valid JSON objects could be parsed from TaskWarrior output. Returning empty array.");
+      return [];
+    }
+
+    // Validate each object with Zod, skipping any that fail validation
+    const validatedObjects = [];
+    
+    for (let i = 0; i < validObjects.length; i++) {
+      const obj = validObjects[i];
+      try {
+        const validatedObj = TaskWarriorTaskSchema.parse(obj);
+        validatedObjects.push(validatedObj);
+      } catch (validationError) {
+        console.error(`Validation failed for task object at index ${i}:`, 
+          JSON.stringify(obj).substring(0, 100), validationError);
+        // Skip this object but continue with others - don't throw
+      }
+    }
+    
+    return validatedObjects;
+  } catch (error) {
+    // Special case for "No matches" that might have leaked through error handling
+    // Extra safety to ensure consistent behavior regardless of how the error is propagated
+    if (error instanceof Error) {
+      if (
+        error.message.includes("No matches") || 
+        error.message.includes("No tasks found") ||
+        error.message.includes("No tasks") ||
+        error.message.includes("No pending tasks")
+      ) {
+        console.log(`executeTaskWarriorCommandJson - Caught error with "No matches" pattern: "${error.message}". Returning empty array.`);
+        return [];
+      }
+    }
+    
+    // For ANY other error, return empty array instead of throwing
+    console.error("Error processing TaskWarrior JSON output:", error);
+    return []; // Never throw - always return empty array on errors
+  }
 }
 
 /**

@@ -8,9 +8,35 @@ import {
   getTaskByUuid,
 } from "../../utils/taskwarrior.js";
 
+// --- Standard MCP Interfaces (should ideally be imported) ---
+interface JsonContentItem {
+  type: "json";
+  data: any;
+}
+
+interface TextContentItem {
+  type: "text";
+  text: string;
+}
+
+interface McpToolResponse {
+  tool_name: string;
+  status: "success" | "error";
+  result?: {
+    content: Array<JsonContentItem | TextContentItem>;
+  };
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+}
+// --- End MCP Interfaces ---
+
 export const modifyTaskHandler = async (
   args: ModifyTaskRequest,
-): Promise<TaskWarriorTask | ErrorResponse> => {
+  toolName: string = "modifyTask", // MCP Router usually provides this
+): Promise<McpToolResponse> => {
   // Validation is now done by src/index.ts
   // const validationResult = ModifyTaskRequestSchema.safeParse(body);
   // if (!validationResult.success) { ... }
@@ -21,7 +47,20 @@ export const modifyTaskHandler = async (
     const existingTask = await getTaskByUuid(uuid);
     if (!existingTask) {
       return {
-        error: `Task with UUID '${uuid}' not found. Cannot modify.`,
+        tool_name: toolName,
+        status: "error",
+        error: {
+          code: "TASK_NOT_FOUND",
+          message: `Task with UUID '${uuid}' not found. Cannot modify.`,
+        },
+        result: {
+          content: [
+            {
+              type: "text",
+              text: `Error in ${toolName} for UUID '${uuid}': Task not found. Cannot modify.`,
+            },
+          ],
+        },
       };
     }
 
@@ -29,13 +68,9 @@ export const modifyTaskHandler = async (
 
     // Iterate over the modifications and add them to the command arguments
     if (modifications.description) {
-      commandArgs.push(`description:"${modifications.description}"`);
+      commandArgs.push(`description:'${modifications.description.replace(/'/g, "'\\''")}'`);
     }
     if (modifications.status) {
-      // Note: `task modify status:completed` might not work like `task <uuid> done`.
-      // Taskwarrior often prefers specific commands for status changes (done, start, stop).
-      // However, `modify status:pending` or `status:waiting` should be fine.
-      // For simplicity, we allow it, but be aware of Taskwarrior's behavior.
       commandArgs.push(`status:${modifications.status}`);
     }
     if (modifications.due) {
@@ -45,7 +80,6 @@ export const modifyTaskHandler = async (
       commandArgs.push(`priority:${modifications.priority}`);
     }
     if (modifications.project !== undefined) {
-      // Check for undefined to allow setting empty project
       commandArgs.push(`project:${modifications.project}`);
     }
     if (modifications.addTags && modifications.addTags.length > 0) {
@@ -55,14 +89,22 @@ export const modifyTaskHandler = async (
       modifications.removeTags.forEach((tag) => commandArgs.push(`-${tag}`));
     }
 
-    // If no actual modifications were provided beyond UUID, this check can be useful.
-    // However, ModifyTaskRequestSchema should ideally enforce at least one modifiable field if UUID is present.
     if (commandArgs.length === 2) {
-      // Only [uuid, "modify"]
       console.warn(
-        "modifyTaskHandler called with UUID but no modifications provided.",
+        `[${toolName}] called for UUID ${uuid} but no actual modifications were provided in the request. Returning existing task.`,
       );
-      return existingTask; // Return existing task if no modifications were applied
+      return {
+        tool_name: toolName,
+        status: "success",
+        result: {
+          content: [
+            {
+              type: "json",
+              data: existingTask,
+            },
+          ],
+        },
+      };
     }
 
     executeTaskWarriorCommandRaw(commandArgs);
@@ -70,23 +112,68 @@ export const modifyTaskHandler = async (
     const updatedTask = await getTaskByUuid(uuid);
     if (!updatedTask) {
       return {
-        error: `Task with UUID '${uuid}' was modified, but could not be retrieved afterwards.`,
-        details:
-          "The task modification command seemed to succeed but the task vanished.",
+        tool_name: toolName,
+        status: "error",
+        error: {
+          code: "TASK_NOT_FOUND",
+          message: `Task with UUID '${uuid}' was modified, but could not be retrieved afterwards.`,
+          details: "The task modification command seemed to succeed but the task vanished.",
+        },
+        result: {
+          content: [
+            {
+              type: "text",
+              text: `Error in ${toolName} for UUID '${uuid}': The task modification command seemed to succeed but the task vanished.`,
+            },
+          ],
+        },
       };
     }
 
-    return updatedTask; // Return TaskWarriorTask directly
+    return {
+      tool_name: toolName,
+      status: "success",
+      result: {
+        content: [
+          {
+            type: "json",
+            data: updatedTask,
+          },
+        ],
+      },
+    };
   } catch (error: unknown) {
-    console.error("Error in modifyTaskHandler:", error);
-    let message = "Failed to modify task.";
+    console.error(`Error in ${toolName} handler for UUID '${uuid}':`, error);
+    let message = `Failed to execute ${toolName}.`;
     let details: string | undefined;
+    let errorCode = "TOOL_EXECUTION_ERROR";
+
     if (error instanceof Error) {
       message = error.message;
+      if (message.toLowerCase().includes("not found")) {
+        errorCode = "TASK_NOT_FOUND";
+      }
       details = error.stack;
     } else if (typeof error === "string") {
       message = error;
     }
-    return { error: message, details }; // Conform to ErrorResponse
+
+    return {
+      tool_name: toolName,
+      status: "error",
+      error: {
+        code: errorCode,
+        message: message,
+        details: details,
+      },
+      result: {
+        content: [
+          {
+            type: "text",
+            text: `Error in ${toolName} for UUID '${uuid}': ${message}`,
+          },
+        ],
+      },
+    };
   }
 };
