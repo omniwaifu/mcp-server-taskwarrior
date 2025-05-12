@@ -1,8 +1,7 @@
-import { z } from "zod";
-import {
-  StartTaskRequestSchema,
-  TaskWarriorTaskSchema,
-  ErrorResponseSchema,
+import type {
+  StartTaskRequest,
+  TaskWarriorTask,
+  ErrorResponse,
 } from "../../types/task.js";
 import {
   executeTaskWarriorCommandRaw,
@@ -10,20 +9,9 @@ import {
 } from "../../utils/taskwarrior.js";
 
 export const startTaskHandler = async (
-  body: unknown,
-): Promise<
-  z.infer<typeof TaskWarriorTaskSchema> | z.infer<typeof ErrorResponseSchema>
-> => {
-  const validationResult = StartTaskRequestSchema.safeParse(body);
-  if (!validationResult.success) {
-    console.error("Validation Error:", validationResult.error.errors);
-    return {
-      error: "Invalid request body for startTask",
-      details: validationResult.error.toString(),
-    };
-  }
-
-  const { uuid } = validationResult.data;
+  args: StartTaskRequest,
+): Promise<TaskWarriorTask | ErrorResponse> => {
+  const { uuid } = args;
 
   try {
     const taskToStart = await getTaskByUuid(uuid);
@@ -33,17 +21,10 @@ export const startTaskHandler = async (
       };
     }
 
-    // Check if task is already started (Taskwarrior 'start' is idempotent but good to know)
-    // A task is active if it has a 'start' timestamp and no 'end' timestamp (though 'end' isn't usually on active tasks).
-    // Taskwarrior manages this internally. If `task <uuid> start` is run on an already started task, it doesn't error.
-    // It might output "Task ... already started."
     if (taskToStart.start) {
       console.log(
         `Task '${uuid}' is already started (start date: ${taskToStart.start}). Re-starting might occur or be a no-op.`,
       );
-      // We can choose to proceed or return the task as is.
-      // Forcing a re-start via TaskWarrior might update the start time if hooks/config allow.
-      // Let's proceed, as \`task start\` itself is idempotent or updates.
     }
 
     executeTaskWarriorCommandRaw([uuid, "start"]);
@@ -52,12 +33,15 @@ export const startTaskHandler = async (
     if (!updatedTask) {
       return {
         error: `Task with UUID '${uuid}' was started, but could not be retrieved afterwards.`,
+        details:
+          "The task modification command seemed to succeed but the task vanished.",
       };
     }
     if (!updatedTask.start) {
-      // This would be unexpected if the start command was successful.
       return {
         error: `Task with UUID '${uuid}' was attempted to be started, but it does not have a start time.`,
+        details:
+          "The start command might have failed silently or Taskwarrior state is inconsistent.",
       };
     }
 
@@ -65,10 +49,13 @@ export const startTaskHandler = async (
   } catch (error: unknown) {
     console.error("Error in startTaskHandler:", error);
     let message = "Failed to start task.";
+    let details: string | undefined;
     if (error instanceof Error) {
       message = error.message;
+      details = error.stack;
+    } else if (typeof error === "string") {
+      message = error;
     }
-    return { error: message };
+    return { error: message, details };
   }
 };
- 

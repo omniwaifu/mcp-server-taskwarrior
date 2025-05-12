@@ -2,6 +2,7 @@
 import type {
   ListPendingTasksRequest,
   TaskWarriorTask,
+  ErrorResponse, // Import ErrorResponse
 } from "../../types/task.js"; // Import the type
 // The Zod schema itself will be used by index.ts for parsing before calling this handler.
 // If this handler needed to do its own validation or access the schema, it would import ListPendingTasksRequestSchema
@@ -9,10 +10,8 @@ import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 
 export async function handleGetNextTasks(
   args: ListPendingTasksRequest,
-): Promise<
-  | { content: TaskWarriorTask[] }
-  | { content: { type: "error"; text: string }[] }
-> {
+): Promise<TaskWarriorTask[] | ErrorResponse> {
+  // Update return type
   console.log("handleGetNextTasks called with:", args);
 
   // Taskwarrior's 'next' report implicitly applies urgency and other factors.
@@ -28,21 +27,20 @@ export async function handleGetNextTasks(
 
   try {
     const pendingTasks = await executeTaskWarriorCommandJson(commandArgs);
-    return { content: pendingTasks }; // Now pendingTasks is the resolved array
+    return pendingTasks; // Return TaskWarriorTask[] directly
   } catch (error: unknown) {
     console.error("Error in handleGetNextTasks:", error);
     let message = "Failed to get next tasks.";
+    let details: string | undefined;
     if (error instanceof Error) {
       message = error.message;
+      details = error.stack; // Capture stack for details
+    } else if (typeof error === "string") {
+      message = error;
     }
     return {
-      content: [
-        {
-          type: "error",
-          text: message,
-        },
-      ],
+      error: message, // Conform to ErrorResponse
+      details,
     };
   }
 }
- 

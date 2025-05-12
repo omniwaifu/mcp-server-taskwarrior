@@ -1,16 +1,13 @@
-import { z } from "zod";
-import {
-  ListTasksRequestSchema,
-  TaskWarriorTaskSchema,
-  ErrorResponseSchema,
+import type {
+  ListTasksRequest,
+  TaskWarriorTask,
+  ErrorResponse,
 } from "../../types/task.js";
 import { executeTaskWarriorCommandJson } from "../../utils/taskwarrior.js";
 
 export async function handleListTasks(
-  args: z.infer<typeof ListTasksRequestSchema>,
-): Promise<
-  z.infer<typeof TaskWarriorTaskSchema>[] | z.infer<typeof ErrorResponseSchema>
-> {
+  args: ListTasksRequest,
+): Promise<TaskWarriorTask[] | ErrorResponse> {
   const filters: string[] = [];
 
   if (args.project) {
@@ -53,13 +50,17 @@ export async function handleListTasks(
 
   try {
     const tasks = await executeTaskWarriorCommandJson(filters);
-    return { tasks }; // Adjusted to match expected { tasks: TaskWarriorTask[] } structure
+    return tasks;
   } catch (error: unknown) {
     console.error("Error in handleListTasks:", error);
     let message = "Failed to list tasks.";
+    let details: string | undefined;
     if (error instanceof Error) {
       message = error.message;
+      details = error.stack;
+    } else if (typeof error === "string") {
+      message = error;
     }
-    return { error: message };
+    return { error: message, details };
   }
 }

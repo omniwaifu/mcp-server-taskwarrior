@@ -1,5 +1,9 @@
 // import { z } from "zod";
-import type { AddTaskRequest, TaskWarriorTask } from "../../types/task.js";
+import type {
+  AddTaskRequest,
+  TaskWarriorTask,
+  ErrorResponse,
+} from "../../types/task.js";
 import {
   executeTaskWarriorCommandRaw,
   executeTaskWarriorCommandJson,
@@ -8,7 +12,7 @@ import {
 
 export async function handleAddTask(
   args: AddTaskRequest,
-): Promise<{ content: TaskWarriorTask[] | { type: "error"; text: string }[] }> {
+): Promise<TaskWarriorTask[] | ErrorResponse> {
   console.log("handleAddTask called with:", args);
 
   const addCommandArgs: string[] = ["add"];
@@ -83,12 +87,8 @@ export async function handleAddTask(
 
     if (!createdTaskUuid) {
       return {
-        content: [
-          {
-            type: "error",
-            text: "Failed to retrieve the newly created task or its UUID.",
-          },
-        ],
+        error: "Failed to retrieve the newly created task or its UUID.",
+        details: "Task added but UUID could not be determined.",
       };
     }
 
@@ -97,28 +97,25 @@ export async function handleAddTask(
     if (!createdTask) {
       // Should not happen if UUID was just found
       return {
-        content: [
-          {
-            type: "error",
-            text: `Failed to fetch newly created task with UUID: ${createdTaskUuid}`,
-          },
-        ],
+        error: `Failed to fetch newly created task with UUID: ${createdTaskUuid}`,
+        details:
+          "Task was added and UUID determined, but subsequent fetch failed.",
       };
     }
-    return { content: [createdTask] }; // Return the single task object
+    return [createdTask];
   } catch (error: unknown) {
     console.error("Error in handleAddTask:", error);
     let message = "Failed to add task.";
+    let details: string | undefined;
     if (error instanceof Error) {
       message = error.message;
+      details = error.stack;
+    } else if (typeof error === "string") {
+      message = error;
     }
     return {
-      content: [
-        {
-          type: "error",
-          text: message,
-        },
-      ],
+      error: message,
+      details,
     };
   }
 }

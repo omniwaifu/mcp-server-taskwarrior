@@ -1,27 +1,14 @@
-import { z } from "zod";
-import {
-  GetTaskDetailsRequestSchema,
-  TaskWarriorTaskSchema,
-  ErrorResponseSchema,
+import type {
+  GetTaskDetailsRequest,
+  TaskWarriorTask,
+  ErrorResponse,
 } from "../../types/task.js";
 import { getTaskByUuid } from "../../utils/taskwarrior.js";
 
 export const getTaskDetailsHandler = async (
-  body: unknown,
-): Promise<
-  z.infer<typeof TaskWarriorTaskSchema> | z.infer<typeof ErrorResponseSchema>
-> => {
-  const validationResult = GetTaskDetailsRequestSchema.safeParse(body);
-
-  if (!validationResult.success) {
-    console.error("Validation Error:", validationResult.error.errors);
-    return {
-      error: "Invalid request body for getTaskDetails",
-      details: validationResult.error.toString(),
-    };
-  }
-
-  const { uuid } = validationResult.data;
+  args: GetTaskDetailsRequest,
+): Promise<TaskWarriorTask | ErrorResponse> => {
+  const { uuid } = args;
 
   try {
     const task = await getTaskByUuid(uuid);
@@ -30,14 +17,17 @@ export const getTaskDetailsHandler = async (
         error: `Task with UUID '${uuid}' not found.`,
       };
     }
-    return { task: task! };
+    return task;
   } catch (error: unknown) {
     console.error("Error in getTaskDetailsHandler:", error);
     let message = "Failed to get task details.";
+    let details: string | undefined;
     if (error instanceof Error) {
       message = error.message;
+      details = error.stack;
+    } else if (typeof error === "string") {
+      message = error;
     }
-    return { error: message };
+    return { error: message, details };
   }
 };
- 

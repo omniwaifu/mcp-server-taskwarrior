@@ -1,8 +1,7 @@
-import { z } from "zod";
-import {
-  ModifyTaskRequestSchema,
-  TaskWarriorTaskSchema,
-  ErrorResponseSchema,
+import type {
+  ModifyTaskRequest,
+  TaskWarriorTask,
+  ErrorResponse,
 } from "../../types/task.js";
 import {
   executeTaskWarriorCommandRaw,
@@ -10,26 +9,17 @@ import {
 } from "../../utils/taskwarrior.js";
 
 export const modifyTaskHandler = async (
-  body: unknown,
-): Promise<
-  z.infer<typeof TaskWarriorTaskSchema> | z.infer<typeof ErrorResponseSchema>
-> => {
-  const validationResult = ModifyTaskRequestSchema.safeParse(body);
-  if (!validationResult.success) {
-    console.error("Validation Error:", validationResult.error.errors);
-    return {
-      error: "Invalid request body for modifyTask",
-      details: validationResult.error.toString(),
-    };
-  }
+  args: ModifyTaskRequest,
+): Promise<TaskWarriorTask | ErrorResponse> => {
+  // Validation is now done by src/index.ts
+  // const validationResult = ModifyTaskRequestSchema.safeParse(body);
+  // if (!validationResult.success) { ... }
 
-  const { uuid, ...modifications } = validationResult.data;
+  const { uuid, ...modifications } = args;
 
   try {
-    // First, verify the task exists
     const existingTask = await getTaskByUuid(uuid);
     if (!existingTask) {
-      // Should be caught by getTaskByUuid if it throws an error on not found
       return {
         error: `Task with UUID '${uuid}' not found. Cannot modify.`,
       };
@@ -69,8 +59,10 @@ export const modifyTaskHandler = async (
     // However, ModifyTaskRequestSchema should ideally enforce at least one modifiable field if UUID is present.
     if (commandArgs.length === 2) {
       // Only [uuid, "modify"]
-      console.warn("modifyTaskHandler called with UUID but no modifications.");
-      return existingTask; // Or throw new Error("No modifications provided");
+      console.warn(
+        "modifyTaskHandler called with UUID but no modifications provided.",
+      );
+      return existingTask; // Return existing task if no modifications were applied
     }
 
     executeTaskWarriorCommandRaw(commandArgs);
@@ -79,17 +71,22 @@ export const modifyTaskHandler = async (
     if (!updatedTask) {
       return {
         error: `Task with UUID '${uuid}' was modified, but could not be retrieved afterwards.`,
+        details:
+          "The task modification command seemed to succeed but the task vanished.",
       };
     }
 
-    return updatedTask;
+    return updatedTask; // Return TaskWarriorTask directly
   } catch (error: unknown) {
     console.error("Error in modifyTaskHandler:", error);
     let message = "Failed to modify task.";
+    let details: string | undefined;
     if (error instanceof Error) {
       message = error.message;
+      details = error.stack;
+    } else if (typeof error === "string") {
+      message = error;
     }
-    return { error: message };
+    return { error: message, details }; // Conform to ErrorResponse
   }
 };
- 

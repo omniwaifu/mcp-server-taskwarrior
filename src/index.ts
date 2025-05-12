@@ -3,7 +3,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
-  CallToolRequestSchema,
   ListToolsRequestSchema,
   // ToolSchema as MCPToolSchema, // No longer used
 } from "@modelcontextprotocol/sdk/types.js";
@@ -12,7 +11,6 @@ import {
 // import path from "path";
 // import os from "os";
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 // import { diffLines, createTwoFilesPatch } from "diff"; // Likely not needed
 // import { minimatch } from "minimatch"; // Likely not needed
 
@@ -48,6 +46,182 @@ import {
   ToolHandlerSuccessResponse, // Import the new union type
 } from "./types/task.js";
 
+// Pre-generate JSON schemas for tool inputs
+const listPendingTasksJsonSchema = {
+  type: "object",
+  properties: {
+    project: {
+      type: "string",
+      pattern: "^[a-zA-Z0-9 ._-]+$",
+    },
+    tags: {
+      type: "array",
+      items: {
+        type: "string",
+        pattern: "^[a-zA-Z0-9_-]+$",
+      },
+    },
+  },
+  additionalProperties: false,
+} as const; // Use 'as const' for stronger typing of the literal
+
+const markTaskDoneJsonSchema = {
+  type: "object",
+  properties: {
+    uuid: {
+      type: "string",
+      format: "uuid", // JSON schema format for UUID
+    },
+  },
+  required: ["uuid"],
+  additionalProperties: false,
+} as const;
+
+const addTaskJsonSchema = {
+  type: "object",
+  properties: {
+    description: { type: "string" },
+    due: { type: "string" }, // Based on z.string().optional()
+    priority: { type: "string", enum: ["H", "M", "L"] },
+    project: { type: "string", pattern: "^[a-zA-Z0-9 ._-]+$" },
+    tags: {
+      type: "array",
+      items: { type: "string", pattern: "^[a-zA-Z0-9_-]+$" },
+    },
+  },
+  required: ["description"],
+  additionalProperties: false,
+} as const;
+
+const listTasksJsonSchema = {
+  type: "object",
+  properties: {
+    status: {
+      type: "string",
+      enum: ["pending", "completed", "deleted", "waiting", "recurring"],
+    },
+    project: { type: "string", pattern: "^[a-zA-Z0-9 ._-]+$" },
+    tags: {
+      type: "array",
+      items: { type: "string", pattern: "^[a-zA-Z0-9_-]+$" },
+    },
+    descriptionContains: { type: "string" },
+    dueBefore: { type: "string", format: "date-time" },
+    dueAfter: { type: "string", format: "date-time" },
+    scheduledBefore: { type: "string", format: "date-time" },
+    scheduledAfter: { type: "string", format: "date-time" },
+    modifiedBefore: { type: "string", format: "date-time" },
+    modifiedAfter: { type: "string", format: "date-time" },
+    limit: { type: "integer" },
+  },
+  additionalProperties: false,
+} as const;
+
+const getTaskDetailsJsonSchema = {
+  type: "object",
+  properties: {
+    uuid: { type: "string", format: "uuid" },
+  },
+  required: ["uuid"],
+  additionalProperties: false,
+} as const;
+
+const modifyTaskJsonSchema = {
+  type: "object",
+  properties: {
+    uuid: { type: "string", format: "uuid" },
+    description: { type: "string" },
+    status: {
+      type: "string",
+      enum: ["pending", "completed", "deleted", "waiting", "recurring"],
+    },
+    due: { type: "string", format: "date-time" },
+    priority: { type: "string", enum: ["H", "M", "L"] },
+    project: { type: "string", pattern: "^[a-zA-Z0-9 ._-]*$" },
+    addTags: {
+      type: "array",
+      items: { type: "string", pattern: "^[a-zA-Z0-9_-]+$" },
+    },
+    removeTags: {
+      type: "array",
+      items: { type: "string", pattern: "^[a-zA-Z0-9_-]+$" },
+    },
+  },
+  required: ["uuid"],
+  additionalProperties: false,
+} as const;
+
+const startTaskJsonSchema = {
+  type: "object",
+  properties: {
+    uuid: { type: "string", format: "uuid" },
+  },
+  required: ["uuid"],
+  additionalProperties: false,
+} as const;
+
+const stopTaskJsonSchema = {
+  type: "object",
+  properties: {
+    uuid: { type: "string", format: "uuid" },
+  },
+  required: ["uuid"],
+  additionalProperties: false,
+} as const;
+
+const deleteTaskJsonSchema = {
+  type: "object",
+  properties: {
+    uuid: { type: "string", format: "uuid" },
+    skipConfirmation: { type: "boolean" },
+  },
+  required: ["uuid"],
+  additionalProperties: false,
+} as const;
+
+const addAnnotationJsonSchema = {
+  type: "object",
+  properties: {
+    uuid: { type: "string", format: "uuid" },
+    annotation: { type: "string" },
+  },
+  required: ["uuid", "annotation"],
+  additionalProperties: false,
+} as const;
+
+const removeAnnotationJsonSchema = {
+  type: "object",
+  properties: {
+    uuid: { type: "string", format: "uuid" },
+    annotation: { type: "string" },
+  },
+  required: ["uuid", "annotation"],
+  additionalProperties: false,
+} as const;
+
+// Define a local schema that we expect for tool calls via this server
+const LocalCallToolRequestSchema = z
+  .object({
+    jsonrpc: z.literal("2.0").optional(), // Standard JSON-RPC field, often present
+    method: z.literal("tools/call"), // Crucial: MCP method for tool calls
+    id: z.union([z.string(), z.number(), z.null()]).optional(), // Standard JSON-RPC field, often present
+    params: z.object({
+      name: z.string(), // Name of the tool to call
+      arguments: z.record(z.string(), z.unknown()).optional(), // Tool arguments
+      _meta: z
+        .object({
+          // Optional metadata
+          progressToken: z.union([z.string(), z.number()]).optional(),
+        })
+        .optional(),
+    }),
+  })
+  .passthrough(); // Allow other fields that might be part of the SDK's schema
+
+export type InferredLocalCallToolRequest = z.infer<
+  typeof LocalCallToolRequestSchema
+>;
+
 // Server setup
 const server = new Server(
   {
@@ -72,81 +246,77 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         name: "get_next_tasks",
         description:
           "Get a list of all pending tasks based on Taskwarrior's 'next' algorithm. Optional filters for project and tags.",
-        inputSchema: zodToJsonSchema(ListPendingTasksRequestSchema), // Correctly assign JSON schema
+        inputSchema: listPendingTasksJsonSchema,
       },
       {
         name: "mark_task_done",
         description: "Mark a task as done (completed) using its UUID.",
-        inputSchema: zodToJsonSchema(MarkTaskDoneRequestSchema), // Correctly assign JSON schema
+        inputSchema: markTaskDoneJsonSchema,
       },
       {
         name: "add_task",
         description:
           "Add a new task with a description and optional properties.",
-        inputSchema: zodToJsonSchema(AddTaskRequestSchema), // Correctly assign JSON schema
+        inputSchema: addTaskJsonSchema,
       },
       {
         name: "list_tasks",
         description:
           "Get a list of tasks as JSON objects based on flexible filters (status, project, tags, dates, limit, etc.).",
-        inputSchema: zodToJsonSchema(ListTasksRequestSchema), // Correctly assign JSON schema
+        inputSchema: listTasksJsonSchema,
       },
       {
         name: "get_task_details",
         description:
           "Get detailed information for a specific task by its UUID.",
-        inputSchema: zodToJsonSchema(GetTaskDetailsRequestSchema), // Correctly assign JSON schema
+        inputSchema: getTaskDetailsJsonSchema,
       },
       {
         name: "modify_task",
         description:
           "Modify attributes of an existing task (e.g., description, due, priority, project, tags) by its UUID.",
-        inputSchema: zodToJsonSchema(ModifyTaskRequestSchema), // Correctly assign JSON schema
+        inputSchema: modifyTaskJsonSchema,
       },
       {
         name: "start_task",
         description:
           "Mark a task as started by its UUID. If already started, updates the start time.",
-        inputSchema: zodToJsonSchema(StartTaskRequestSchema), // Correctly assign JSON schema
+        inputSchema: startTaskJsonSchema,
       },
       {
         name: "stop_task",
         description:
           "Stop a task that is currently active (started) by its UUID.",
-        inputSchema: zodToJsonSchema(StopTaskRequestSchema), // Correctly assign JSON schema
+        inputSchema: stopTaskJsonSchema,
       },
       {
         name: "delete_task",
         description: "Delete a task by its UUID. Optionally skip confirmation.",
-        inputSchema: zodToJsonSchema(DeleteTaskRequestSchema), // Correctly assign JSON schema
+        inputSchema: deleteTaskJsonSchema,
       },
       {
         name: "add_annotation",
         description:
           "Add an annotation (note) to an existing task by its UUID.",
-        inputSchema: zodToJsonSchema(AddAnnotationRequestSchema), // Correctly assign JSON schema
+        inputSchema: addAnnotationJsonSchema,
       },
       {
         name: "remove_annotation",
         description:
           "Remove an existing annotation from a task by its UUID and exact annotation text.",
-        inputSchema: zodToJsonSchema(RemoveAnnotationRequestSchema), // Correctly assign JSON schema
+        inputSchema: removeAnnotationJsonSchema,
       },
     ],
   };
 });
 
 server.setRequestHandler(
-  CallToolRequestSchema,
-  async (request: z.infer<typeof CallToolRequestSchema>) => {
+  LocalCallToolRequestSchema as any, // Cast to any as a workaround for _cached issue
+  async (request: InferredLocalCallToolRequest) => {
+    // Use the inferred type from local schema
     try {
       const { name, arguments: args } = request.params;
-      // Type result to accommodate direct MCP responses or success/error objects
-      let result:
-        | ToolHandlerSuccessResponse
-        | ErrorResponse
-        | { content: any[] }
-        | undefined;
+      let result: ToolHandlerSuccessResponse | ErrorResponse | undefined;
 
       switch (name) {
         case "get_next_tasks": {
@@ -215,32 +385,25 @@ server.setRequestHandler(
           };
       }
 
-      // Check if the result from the handler is an error (conforming to ErrorResponseSchema)
+      // Process the result from the handler
       if (
         result &&
         typeof result === "object" &&
         "error" in result &&
-        !("content" in result)
+        result.error !== undefined
       ) {
-        const errorResult = result as ErrorResponse; // Type assertion
+        // It's an ErrorResponse from the handler
         return {
           content: [
             {
               type: "error",
-              text: errorResult.error,
+              text: result.error, // result.error is string
+              // Optionally include result.details if the MCP schema supports it
             },
           ],
         };
-      } else if (
-        result &&
-        typeof result === "object" &&
-        "content" in result &&
-        Array.isArray(result.content)
-      ) {
-        // If the handler already returned a compliant MCP response (e.g. handleAddTask, handleGetNextTasks)
-        return result; // result is already { content: any[] }
       } else if (result) {
-        // Wrap successful non-MCP results
+        // It's a ToolHandlerSuccessResponse
         return {
           content: [
             {
@@ -250,12 +413,17 @@ server.setRequestHandler(
           ],
         };
       } else {
-        // Should not happen if handlers always return something or throw
+        // This case should ideally not be reached if handlers always return or throw.
+        // Handle cases where a tool might have legitimately no output but wasn't an error.
+        // Or, treat as an error if all tools are expected to yield some JSON or an error.
+        console.warn(
+          `Tool "${name}" executed but returned undefined or null result.`,
+        );
         return {
           content: [
             {
-              type: "error",
-              text: "Tool executed but returned no result.",
+              type: "error", // Or a different type if appropriate for "no output"
+              text: `Tool "${name}" executed but returned no discernible result.`,
             },
           ],
         };
@@ -285,7 +453,7 @@ server.setRequestHandler(
 async function runServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  // console.error("MCP TaskWarrior Server running on stdio"); // Keep this commented for cleaner output unless debugging
+  console.error("MCP TaskWarrior Server running on stdio"); // Keep this commented for cleaner output unless debugging
 }
 
 runServer().catch((err) => {

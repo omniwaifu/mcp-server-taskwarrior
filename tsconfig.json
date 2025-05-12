@@ -10,7 +10,11 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "./src",
+    "incremental": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "declaration": false,
+    "declarationMap": false
   },
   "include": ["./src/**/*.ts"],
   "exclude": ["node_modules", "**/__tests__/**/*"]

@@ -1,8 +1,7 @@
-import { z } from "zod";
-import {
-  StopTaskRequestSchema,
-  TaskWarriorTaskSchema,
-  ErrorResponseSchema,
+import type {
+  StopTaskRequest,
+  TaskWarriorTask,
+  ErrorResponse,
 } from "../../types/task.js";
 import {
   executeTaskWarriorCommandRaw,
@@ -10,20 +9,9 @@ import {
 } from "../../utils/taskwarrior.js";
 
 export const stopTaskHandler = async (
-  body: unknown,
-): Promise<
-  z.infer<typeof TaskWarriorTaskSchema> | z.infer<typeof ErrorResponseSchema>
-> => {
-  const validationResult = StopTaskRequestSchema.safeParse(body);
-  if (!validationResult.success) {
-    console.error("Validation Error:", validationResult.error.errors);
-    return {
-      error: "Invalid request body for stopTask",
-      details: validationResult.error.toString(),
-    };
-  }
-
-  const { uuid } = validationResult.data;
+  args: StopTaskRequest,
+): Promise<TaskWarriorTask | ErrorResponse> => {
+  const { uuid } = args;
 
   try {
     const taskToStop = await getTaskByUuid(uuid);
@@ -33,15 +21,10 @@ export const stopTaskHandler = async (
       };
     }
 
-    // Check if task is actually started (has a 'start' field and no 'end')
-    // Taskwarrior 'stop' on a not-started task is a no-op and doesn't error.
-    // It might output "Task ... not active."
     if (!taskToStop.start) {
       console.log(
         `Task '${uuid}' is not started. Stop command will be a no-op.`,
       );
-      // We can return the task as is, or proceed and let Taskwarrior handle it.
-      // Let's proceed to mimic CLI behavior.
     }
 
     executeTaskWarriorCommandRaw([uuid, "stop"]);
@@ -50,27 +33,27 @@ export const stopTaskHandler = async (
     if (!updatedTask) {
       return {
         error: `Task with UUID '${uuid}' was stopped, but could not be retrieved afterwards.`,
+        details:
+          "The task modification command seemed to succeed but the task vanished.",
       };
     }
-    // After stopping, the 'start' field might be removed by Taskwarrior, or an 'end' field added,
-    // depending on its internal logic for completed vs. merely stopped tasks.
-    // The `TaskWarriorTaskSchema` has `start` as optional.
-    // If it was pending and then started & stopped, it should return to pending and `start` may be gone.
-    // For now, we just return the task. Further checks could be added if specific state is expected.
     if (updatedTask.start) {
       console.warn(
         `Task '${uuid}' still has a start time after stop command. Current status: ${updatedTask.status}`,
       );
     }
 
-    return { task: updatedTask! };
+    return updatedTask;
   } catch (error: unknown) {
     console.error("Error in stopTaskHandler:", error);
     let message = "Failed to stop task.";
+    let details: string | undefined;
     if (error instanceof Error) {
       message = error.message;
+      details = error.stack;
+    } else if (typeof error === "string") {
+      message = error;
     }
-    return { error: message };
+    return { error: message, details };
   }
 };
- 

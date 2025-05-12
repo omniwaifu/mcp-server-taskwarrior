@@ -96,8 +96,8 @@ export const ModifyTaskRequestSchema = z.object({
   priority: z.enum(["H", "M", "L"]).optional(),
   project: z
     .string()
-    .regex(/^[a-zA-Z0-9 ._-]*$/)
-    .optional(), // Allow empty string for removal
+    .regex(/^[a-zA-Z0-9 ._-]*$/) // Allow empty string for removal
+    .optional(),
   addTags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).optional(),
   removeTags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).optional(),
   // We can add more modifiable fields here based on `task help modify`
@@ -161,7 +161,11 @@ export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 
 // Union of all possible successful (non-error, non-MCP wrapped) responses from tool handlers
 export type ToolHandlerSuccessResponse =
-  | TaskWarriorTask
-  | { tasks: TaskWarriorTask[] }
+  | TaskWarriorTask // For single task results
+  | TaskWarriorTask[] // For list results or single task results returned as an array
   | DeleteTaskResponse
-  | AddAnnotationResponseSchema; // add_annotation returns the full AddAnnotationResponseSchema structure
+  | AddAnnotationResponse; // add_annotation returns the full AddAnnotationResponseSchema structure
+// Add other specific success response types as needed, e.g., for modify, start, stop if they have unique structures.
+
+// Ensure TaskWarriorTaskSchema is comprehensive for what handlers might return
+// No changes needed to TaskWarriorTaskSchema itself for this step.
