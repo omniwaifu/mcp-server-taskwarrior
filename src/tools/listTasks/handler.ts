@@ -53,11 +53,13 @@ export async function handleListTasks(
 
   try {
     const tasks = await executeTaskWarriorCommandJson(filters);
-    return tasks; // executeTaskWarriorCommandJson already returns TaskWarriorTask[] or throws
-  } catch (error: any) {
+    return { tasks }; // Adjusted to match expected { tasks: TaskWarriorTask[] } structure
+  } catch (error: unknown) {
     console.error("Error in handleListTasks:", error);
-    return {
-      error: error.message || "Failed to list tasks.",
-    };
+    let message = "Failed to list tasks.";
+    if (error instanceof Error) {
+      message = error.message;
+    }
+    return { error: message };
   }
 }

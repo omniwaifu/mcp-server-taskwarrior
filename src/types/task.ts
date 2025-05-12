@@ -158,3 +158,10 @@ export const ErrorResponseSchema = z.object({
   details: z.string().optional(),
 });
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
+
+// Union of all possible successful (non-error, non-MCP wrapped) responses from tool handlers
+export type ToolHandlerSuccessResponse =
+  | TaskWarriorTask
+  | { tasks: TaskWarriorTask[] }
+  | DeleteTaskResponse
+  | AddAnnotationResponseSchema; // add_annotation returns the full AddAnnotationResponseSchema structure

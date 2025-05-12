@@ -83,10 +83,13 @@ export const modifyTaskHandler = async (
     }
 
     return updatedTask;
-  } catch (error: any) {
-    console.error(`Error in modifyTaskHandler for UUID '${uuid}':`, error);
-    return {
-      error: error.message || "Failed to modify task.",
-    };
+  } catch (error: unknown) {
+    console.error("Error in modifyTaskHandler:", error);
+    let message = "Failed to modify task.";
+    if (error instanceof Error) {
+      message = error.message;
+    }
+    return { error: message };
   }
 };
+ 

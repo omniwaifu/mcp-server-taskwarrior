@@ -63,11 +63,14 @@ export const stopTaskHandler = async (
       );
     }
 
-    return updatedTask;
-  } catch (error: any) {
-    console.error(`Error in stopTaskHandler for UUID '${uuid}':`, error);
-    return {
-      error: error.message || "Failed to stop task.",
-    };
+    return { task: updatedTask! };
+  } catch (error: unknown) {
+    console.error("Error in stopTaskHandler:", error);
+    let message = "Failed to stop task.";
+    if (error instanceof Error) {
+      message = error.message;
+    }
+    return { error: message };
   }
 };
+ 

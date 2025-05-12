@@ -58,14 +58,19 @@ export async function handleAddTask(
     if (idMatch && idMatch[1]) {
       const newTaskId = idMatch[1];
       // Fetch the task by its new ID to get its full details including UUID
-      const newlyAddedTasks = await executeTaskWarriorCommandJson([newTaskId, "export"]);
+      const newlyAddedTasks = await executeTaskWarriorCommandJson([
+        newTaskId,
+        "export",
+      ]);
       if (newlyAddedTasks.length > 0) {
         createdTaskUuid = newlyAddedTasks[0].uuid;
       }
     } else {
       // Fallback: if ID not in output, try to find by exact description (less reliable)
       // This assumes the description is unique enough for an immediate fetch.
-      console.warn("Could not parse new task ID from 'add' output. Falling back to description match.");
+      console.warn(
+        "Could not parse new task ID from 'add' output. Falling back to description match.",
+      );
       const newTasks = await executeTaskWarriorCommandJson([
         `description:"${args.description.replace(/"/g, '\\"')}"`, // Ensure description is quoted and escaped
         "limit:1",
@@ -86,10 +91,11 @@ export async function handleAddTask(
         ],
       };
     }
-    
+
     // Fetch the task by its UUID to return the full object
     const createdTask = await getTaskByUuid(createdTaskUuid);
-    if (!createdTask) { // Should not happen if UUID was just found
+    if (!createdTask) {
+      // Should not happen if UUID was just found
       return {
         content: [
           {
@@ -100,14 +106,17 @@ export async function handleAddTask(
       };
     }
     return { content: [createdTask] }; // Return the single task object
-
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in handleAddTask:", error);
+    let message = "Failed to add task.";
+    if (error instanceof Error) {
+      message = error.message;
+    }
     return {
       content: [
         {
           type: "error",
-          text: error.message || "Failed to add task.",
+          text: message,
         },
       ],
     };

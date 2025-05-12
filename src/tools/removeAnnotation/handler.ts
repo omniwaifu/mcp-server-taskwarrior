@@ -68,13 +68,13 @@ export const removeAnnotationHandler = async (
     }
 
     return updatedTask;
-  } catch (error: any) {
-    console.error(
-      `Error in removeAnnotationHandler for UUID '${uuid}':`,
-      error,
-    );
-    return {
-      error: error.message || "Failed to remove annotation.",
-    };
+  } catch (error: unknown) {
+    console.error("Error in removeAnnotationHandler:", error);
+    let message = "Failed to remove annotation.";
+    if (error instanceof Error) {
+      message = error.message;
+    }
+    return { error: message };
   }
 };
+ 

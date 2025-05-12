@@ -30,11 +30,14 @@ export const getTaskDetailsHandler = async (
         error: `Task with UUID '${uuid}' not found.`,
       };
     }
-    return task;
-  } catch (error: any) {
-    console.error(`Error in getTaskDetailsHandler for UUID '${uuid}':`, error);
-    return {
-      error: error.message || "Failed to retrieve task details.",
-    };
+    return { task: task! };
+  } catch (error: unknown) {
+    console.error("Error in getTaskDetailsHandler:", error);
+    let message = "Failed to get task details.";
+    if (error instanceof Error) {
+      message = error.message;
+    }
+    return { error: message };
   }
 };
+ 

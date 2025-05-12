@@ -1,15 +1,10 @@
-import { z } from "zod";
 import {
   DeleteTaskRequestSchema,
-  // TaskWarriorTaskSchema, // Not returning a task object upon successful deletion
-  ErrorResponseSchema,
-  DeleteTaskResponseSchema,
   ErrorResponse,
   DeleteTaskResponse,
 } from "../../types/task.js";
 import {
   executeTaskWarriorCommandRaw,
-  getTaskByIdOrUuid,
   getTaskByUuid,
 } from "../../utils/taskwarrior.js";
 
@@ -64,13 +59,21 @@ export const deleteTaskHandler = async (
     try {
       await getTaskByUuid(uuid);
       // If getTaskByUuid succeeds, the task was NOT deleted.
-      console.error(`Task with UUID '${uuid}' was not deleted despite command success.`);
+      console.error(
+        `Task with UUID '${uuid}' was not deleted despite command success.`,
+      );
       return {
         error: `Task with UUID '${uuid}' was attempted to be deleted, but it still exists.`,
       } satisfies ErrorResponse;
-    } catch (fetchError: any) {
+    } catch (fetchError: unknown) {
       // We expect an error here, specifically a "not found" error.
-      if (fetchError.message && fetchError.message.includes("not found")) {
+      // Check if fetchError is an Error instance before accessing message property
+      let fetchErrorMessage = "Unknown error during fetch confirmation";
+      if (fetchError instanceof Error) {
+        fetchErrorMessage = fetchError.message;
+      }
+
+      if (fetchErrorMessage.includes("not found")) {
         // This is the expected outcome.
         return {
           message: `Task '${uuid}' deleted successfully.`,
@@ -78,23 +81,40 @@ export const deleteTaskHandler = async (
         } satisfies DeleteTaskResponse;
       } else {
         // An unexpected error occurred while trying to confirm deletion.
-        console.error(`Unexpected error while confirming deletion of task '${uuid}':`, fetchError);
+        console.error(
+          `Unexpected error while confirming deletion of task '${uuid}':`,
+          fetchError,
+        );
         return {
-          error: `Task '${uuid}' deletion status uncertain. Confirmation check failed: ${fetchError.message}`,
+          error: `Task '${uuid}' deletion status uncertain. Confirmation check failed: ${fetchErrorMessage}`,
         } satisfies ErrorResponse;
       }
     }
-
-  } catch (error: any) {
-    console.error(`Error in deleteTaskHandler for UUID '${uuid}':`, error);
-    if (!skipConfirmation && error.message && error.message.toLowerCase().includes("confirmation")) {
-        return {
-            error: `Deletion requires confirmation. Use skipConfirmation:true or ensure your Taskwarrior configuration allows deletion without confirmation.`,
-            details: error.message
-        } satisfies ErrorResponse;
+  } catch (error: unknown) {
+    let message = "Failed to delete task.";
+    let details: string | undefined;
+    if (error instanceof Error) {
+      message = error.message;
+      // Keep original message as details if it was a confirmation error
+      if (
+        !skipConfirmation &&
+        error.message &&
+        error.message.toLowerCase().includes("confirmation")
+      ) {
+        details = error.message;
+        message = `Deletion requires confirmation. Use skipConfirmation:true or ensure your Taskwarrior configuration allows deletion without confirmation.`;
+      }
     }
+    console.error(`Error in deleteTaskHandler for UUID '${uuid}':`, error);
+    // if (!skipConfirmation && error.message && error.message.toLowerCase().includes("confirmation")) {
+    //     return {
+    //         error: `Deletion requires confirmation. Use skipConfirmation:true or ensure your Taskwarrior configuration allows deletion without confirmation.`,
+    //         details: error.message
+    //     } satisfies ErrorResponse;
+    // }
     return {
-      error: error.message || "Failed to delete task.",
+      error: message,
+      details: details,
     } satisfies ErrorResponse;
   }
 };

@@ -1,6 +1,5 @@
 import { execSync, ExecSyncOptionsWithStringEncoding } from "child_process";
 import { TaskWarriorTask, TaskWarriorTaskSchema } from "../types/task.js"; // Assuming TaskWarriorTaskSchema is the Zod schema
-import { z } from "zod";
 import { isValidUuid } from "./uuid.js";
 
 const defaultExecOptions: ExecSyncOptionsWithStringEncoding = {
@@ -8,6 +7,13 @@ const defaultExecOptions: ExecSyncOptionsWithStringEncoding = {
   maxBuffer: 1024 * 1024 * 10, // 10 MB
   stdio: "pipe", // Inherit stdio to see errors, but pipe output for capture
 };
+
+// Type for error objects from execSync which might have stderr/stdout
+interface ExecSyncError extends Error {
+  stderr?: Buffer | string;
+  stdout?: Buffer | string;
+  status?: number; // execSync errors often have a status code
+}
 
 /**
  * Executes a raw Taskwarrior command.
@@ -27,24 +33,43 @@ export function executeTaskWarriorCommandRaw(
     const command = `task ${commandArgs.join(" ")}`;
     console.log(`Executing: ${command}`); // For debugging
     return execSync(command, finalOptions).toString().trim();
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Log the error and stderr if available
     console.error(
       `Error executing TaskWarrior command: task ${commandArgs.join(" ")}`,
     );
-    if (error.stderr) {
-      console.error(`TaskWarrior stderr: ${error.stderr.toString().trim()}`);
+    let stderrMessage = "";
+    let stdoutMessage = "";
+    let errorMessage = "TaskWarrior command failed";
+
+    if (typeof error === "object" && error !== null) {
+      const execError = error as ExecSyncError; // Assert to our more specific error type
+
+      if (execError.stderr) {
+        stderrMessage = Buffer.isBuffer(execError.stderr)
+          ? execError.stderr.toString().trim()
+          : String(execError.stderr).trim();
+        console.error(`TaskWarrior stderr: ${stderrMessage}`);
+      }
+      if (execError.stdout) {
+        stdoutMessage = Buffer.isBuffer(execError.stdout)
+          ? execError.stdout.toString().trim()
+          : String(execError.stdout).trim();
+        console.error(`TaskWarrior stdout (on error): ${stdoutMessage}`);
+      }
+      // Use original error message if it's an Error instance, otherwise keep default or specific one
+      if (error instanceof Error && error.message) {
+        // Check error.message existence
+        errorMessage = error.message;
+      } else if (stderrMessage) {
+        // Prioritize stderr for error message if generic Error.message is not useful
+        errorMessage = stderrMessage;
+      }
     }
-    if (error.stdout) {
-      // Sometimes error output goes to stdout
-      console.error(
-        `TaskWarrior stdout (on error): ${error.stdout.toString().trim()}`,
-      );
-    }
+
     // Re-throw a more specific error or handle as needed
     throw new Error(
-      `TaskWarrior command failed: ${error.message}` +
-        (error.stderr ? ` (stderr: ${error.stderr.toString().trim()})` : ""),
+      `${errorMessage}` + (stderrMessage ? ` (stderr: ${stderrMessage})` : ""),
     );
   }
 }
@@ -105,7 +130,9 @@ export async function getTaskByUuid(uuid: string): Promise<TaskWarriorTask> {
  */
 export function getTaskByIdOrUuid(idOrUuid: string): TaskWarriorTask | null {
   try {
-    console.warn("getTaskByIdOrUuid is deprecated and may not function as expected with async changes. Use getTaskByUuid.");
+    console.warn(
+      "getTaskByIdOrUuid is deprecated and may not function as expected with async changes. Use getTaskByUuid.",
+    );
     return null;
   } catch (error) {
     console.error(`Error fetching task by ID/UUID ${idOrUuid}:`, error);

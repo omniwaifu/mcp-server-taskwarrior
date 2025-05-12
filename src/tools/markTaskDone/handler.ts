@@ -67,11 +67,14 @@ export const markTaskDoneHandler = async (
       };
     }
 
-    return updatedTask;
-  } catch (error: any) {
-    console.error(`Error in markTaskDoneHandler for UUID '${uuid}':`, error);
-    return {
-      error: error.message || "Failed to mark task as done.",
-    };
+    return { task: updatedTask! }; // Use non-null assertion as existence and update are implied
+  } catch (error: unknown) {
+    console.error("Error in markTaskDoneHandler:", error);
+    let message = "Failed to mark task as done.";
+    if (error instanceof Error) {
+      message = error.message;
+    }
+    return { error: message };
   }
 };
+ 

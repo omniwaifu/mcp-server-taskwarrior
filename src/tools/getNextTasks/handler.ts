@@ -29,15 +29,20 @@ export async function handleGetNextTasks(
   try {
     const pendingTasks = await executeTaskWarriorCommandJson(commandArgs);
     return { content: pendingTasks }; // Now pendingTasks is the resolved array
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in handleGetNextTasks:", error);
+    let message = "Failed to get next tasks.";
+    if (error instanceof Error) {
+      message = error.message;
+    }
     return {
       content: [
         {
           type: "error",
-          text: error.message || "Failed to get next tasks.",
+          text: message,
         },
       ],
     };
   }
 }
+ 

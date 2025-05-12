@@ -62,10 +62,13 @@ export const startTaskHandler = async (
     }
 
     return updatedTask;
-  } catch (error: any) {
-    console.error(`Error in startTaskHandler for UUID '${uuid}':`, error);
-    return {
-      error: error.message || "Failed to start task.",
-    };
+  } catch (error: unknown) {
+    console.error("Error in startTaskHandler:", error);
+    let message = "Failed to start task.";
+    if (error instanceof Error) {
+      message = error.message;
+    }
+    return { error: message };
   }
 };
+ 

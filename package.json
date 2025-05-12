@@ -17,7 +17,9 @@
   "scripts": {
     "build": "tsc && shx chmod +x dist/*.js",
     "prepare": "npm run build",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "lint": "eslint . --ext .ts",
+    "lint:fix": "eslint . --ext .ts --fix"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -30,7 +32,13 @@
     "@types/diff": "^7.0.0",
     "@types/minimatch": "^5.1.2",
     "@types/node": "^22.15.3",
+    "@typescript-eslint/eslint-plugin": "^8.32.0",
+    "@typescript-eslint/parser": "^8.32.0",
+    "eslint": "^9.26.0",
+    "eslint-plugin-unused-imports": "^4.1.4",
+    "globals": "^16.1.0",
     "shx": "^0.4.0",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.32.0"
   }
 }
