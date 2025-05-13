@@ -108,24 +108,51 @@ export async function executeTaskWarriorCommandJson(
       return [];
     }
 
-    // Handle a single JSON object or multiple JSON objects separated by newlines
+    // Try to parse the entire output as a JSON array first
+    try {
+      // First attempt: try to parse the whole output as a single JSON array
+      const parsedArray = JSON.parse(trimmedOutput);
+      if (Array.isArray(parsedArray)) {
+        console.log(`Successfully parsed output as a complete JSON array with ${parsedArray.length} items`);
+        
+        // Validate all objects in the array
+        const validatedObjects = [];
+        for (let i = 0; i < parsedArray.length; i++) {
+          try {
+            // The schema now allows passthrough of unknown fields
+            const validatedObj = TaskWarriorTaskSchema.parse(parsedArray[i]);
+            validatedObjects.push(validatedObj);
+          } catch (validationError) {
+            console.error(`Validation failed for task in array at index ${i}:`, 
+              JSON.stringify(parsedArray[i]).substring(0, 100), validationError);
+            // Skip invalid objects but continue with valid ones
+          }
+        }
+        return validatedObjects;
+      }
+    } catch (wholeParseFailed) {
+      console.log("Failed to parse output as a complete JSON array, trying line by line parsing");
+    }
+
+    // Fallback: If parsing the whole output failed, try parsing each line as a separate JSON object
     const validObjects = [];
     const lines = trimmedOutput.split("\n");
     
     for (const line of lines) {
-      if (!line.trim()) continue; // Skip empty lines
+      if (!line.trim() || line.trim() === '[' || line.trim() === ']') continue; // Skip empty lines and array brackets
+      
+      // Remove any trailing commas (common in pretty-printed JSON arrays)
+      const cleanLine = line.trim().replace(/,\s*$/, '');
       
       try {
-        const parsedObj = JSON.parse(line);
+        const parsedObj = JSON.parse(cleanLine);
         validObjects.push(parsedObj);
       } catch (parseError) {
-        // Don't throw here - just log the error and continue with any valid objects
-        console.error(`Failed to parse line: ${line.substring(0, 50)}... - Skipping this line and continuing.`, parseError);
-        // Continue processing other lines instead of failing the entire operation
+        console.error(`Failed to parse line: ${cleanLine.substring(0, 50)}... - Skipping this line and continuing.`, parseError);
       }
     }
     
-    // If we couldn't parse any valid objects, return empty array instead of throwing
+    // If we couldn't parse any valid objects, return empty array
     if (validObjects.length === 0) {
       console.warn("No valid JSON objects could be parsed from TaskWarrior output. Returning empty array.");
       return [];
@@ -137,6 +164,7 @@ export async function executeTaskWarriorCommandJson(
     for (let i = 0; i < validObjects.length; i++) {
       const obj = validObjects[i];
       try {
+        // The schema now allows passthrough of unknown fields
         const validatedObj = TaskWarriorTaskSchema.parse(obj);
         validatedObjects.push(validatedObj);
       } catch (validationError) {
@@ -149,7 +177,6 @@ export async function executeTaskWarriorCommandJson(
     return validatedObjects;
   } catch (error) {
     // Special case for "No matches" that might have leaked through error handling
-    // Extra safety to ensure consistent behavior regardless of how the error is propagated
     if (error instanceof Error) {
       if (
         error.message.includes("No matches") || 
@@ -164,7 +191,7 @@ export async function executeTaskWarriorCommandJson(
     
     // For ANY other error, return empty array instead of throwing
     console.error("Error processing TaskWarrior JSON output:", error);
-    return []; // Never throw - always return empty array on errors
+    return []; // Always return empty array on errors for robustness
   }
 }
 

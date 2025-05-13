@@ -2,7 +2,6 @@
 import type {
   AddTaskRequest,
   TaskWarriorTask,
-  ErrorResponse,
 } from "../../types/task.js";
 import {
   executeTaskWarriorCommandRaw,
@@ -10,36 +9,13 @@ import {
   getTaskByUuid,
 } from "../../utils/taskwarrior.js";
 
-// --- Standard MCP Interfaces (should ideally be imported) ---
-interface JsonContentItem {
-  type: "json";
-  data: any;
-}
-
-interface TextContentItem {
-  type: "text";
-  text: string;
-}
-
-interface McpToolResponse {
-  tool_name: string;
-  status: "success" | "error";
-  result?: {
-    content: Array<JsonContentItem | TextContentItem>;
-  };
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-}
-// --- End MCP Interfaces ---
-
+/**
+ * Add a new task to TaskWarrior
+ */
 export async function handleAddTask(
   args: AddTaskRequest,
-  toolName: string = "addTask", // MCP Router usually provides this
-): Promise<McpToolResponse> {
-  console.log(`${toolName} called with:`, args);
+): Promise<TaskWarriorTask> {
+  console.log(`addTask called with:`, args);
 
   const commandArgs: string[] = ["add"];
   // Ensure description is quoted and internal quotes escaped for the shell command
@@ -92,65 +68,14 @@ export async function handleAddTask(
       if (newTasks.length > 0 && newTasks[0].uuid) {
         createdTaskUuid = newTasks[0].uuid;
       } else {
-         return {
-          tool_name: toolName,
-          status: "error",
-          error: {
-            code: "TASK_CREATION_UUID_FAILURE",
-            message: "Failed to determine UUID of the newly created task.",
-            details: "Task might have been added, but its UUID could not be retrieved. TaskWarrior output: " + addOutput,
-          },
-           result: {
-            content: [
-              { type: "text", text: "Failed to determine UUID of the newly created task. TaskWarrior output: " + addOutput },
-            ],
-          },
-        };
+        throw new Error("Failed to determine UUID of the newly created task. Task might have been added, but its UUID could not be retrieved.");
       }
     }
 
-    const createdTask = await getTaskByUuid(createdTaskUuid); // getTaskByUuid already handles not found by throwing
-
-    return {
-      tool_name: toolName,
-      status: "success",
-      result: {
-        content: [
-          {
-            type: "json",
-            data: [createdTask], // Return the single created task in an array, as per original Promise<TaskWarriorTask[]>
-          },
-        ],
-      },
-    };
+    // Get the full task details and return them
+    return await getTaskByUuid(createdTaskUuid);
   } catch (error: unknown) {
-    console.error(`Error in ${toolName} handler:`, error);
-    let message = `Failed to execute ${toolName}.`;
-    let details: string | undefined;
-
-    if (error instanceof Error) {
-      message = error.message;
-      details = error.stack;
-    } else if (typeof error === "string") {
-      message = error;
-    }
-
-    return {
-      tool_name: toolName,
-      status: "error",
-      error: {
-        code: "TOOL_EXECUTION_ERROR",
-        message: message,
-        details: details,
-      },
-      result: {
-        content: [
-          {
-            type: "text",
-            text: `Error in ${toolName}: ${message}`,
-          },
-        ],
-      },
-    };
+    console.error(`Error in addTask handler:`, error);
+    throw error; // Let the central handler handle the error formatting
   }
 }

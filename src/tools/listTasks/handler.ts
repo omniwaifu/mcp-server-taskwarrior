@@ -31,10 +31,12 @@ interface McpToolResponse {
   };
 }
 
+/**
+ * List tasks based on various filter criteria
+ */
 export async function handleListTasks(
   args: ListTasksRequest,
-  toolName: string = "listTasks", // MCP Router usually provides this
-): Promise<McpToolResponse> { // Return type is now McpToolResponse
+): Promise<TaskWarriorTask[]> {
   const filters: string[] = [];
 
   if (args.project) {
@@ -71,94 +73,20 @@ export async function handleListTasks(
     filters.push(`limit:${args.limit}`);
   }
 
-  // Always add export unless it's already there implicitly via a report name
-  // executeTaskWarriorCommandJson handles adding "export" if not present.
-  if (!filters.some(arg => arg.toLowerCase().includes('export'))) {
-    filters.push("export");
-  }
-
   try {
     const tasksArray = await executeTaskWarriorCommandJson(filters);
-    
-    // tasksArray will be [] if no matches, thanks to executeTaskWarriorCommandJson
-    // Always use the standard success response format
-    return {
-      tool_name: toolName,
-      status: "success",
-      result: {
-        content: [
-          {
-            type: "json",
-            data: tasksArray, // Send the array (empty or populated)
-          },
-        ],
-      },
-    };
+    return tasksArray; // Simply return the array directly
   } catch (error: unknown) {
-    console.error(`Error in ${toolName} handler:`, error);
-    let message = `Failed to execute ${toolName}.`;
-    let errorCode = "TOOL_EXECUTION_ERROR";
-    let details: string | undefined;
-
-    if (error instanceof Error) {
-      message = error.message;
-      details = error.stack;
-      
-      // Check for "No matches" pattern in the error message
-      if (message.includes("No matches") || message.includes("No tasks found")) {
-        console.log(`${toolName}: Found "No matches" type message in error, returning empty array as success.`);
-        // For this specific case, return an empty array as a success
-        return {
-          tool_name: toolName,
-          status: "success",
-          result: {
-            content: [
-              {
-                type: "json",
-                data: [], // Return empty array for "No matches"
-              },
-            ],
-          },
-        };
-      }
-    } else if (typeof error === "string") {
-      message = error;
-      // Check for "No matches" pattern in string error
-      if (message.includes("No matches") || message.includes("No tasks found")) {
-        console.log(`${toolName}: Found "No matches" string error, returning empty array as success.`);
-        // For this specific case, return an empty array as a success
-        return {
-          tool_name: toolName,
-          status: "success",
-          result: {
-            content: [
-              {
-                type: "json",
-                data: [], // Return empty array for "No matches"
-              },
-            ],
-          },
-        };
-      }
+    console.error(`Error in listTasks handler:`, error);
+    
+    // If the error contains "No matches", return an empty array
+    if (error instanceof Error && 
+        (error.message.includes("No matches") || 
+         error.message.includes("No tasks found"))) {
+      return [];
     }
-
-    // For actual errors, return the standard error structure
-    return {
-      tool_name: toolName,
-      status: "error",
-      error: {
-        code: errorCode,
-        message: message,
-        details: details,
-      },
-      result: { // Optionally, provide a text error in content as well
-        content: [
-          {
-            type: "text",
-            text: `Error in ${toolName}: ${message}`,
-          },
-        ],
-      },
-    };
+    
+    // Re-throw the error for the central handler to process
+    throw error;
   }
 }

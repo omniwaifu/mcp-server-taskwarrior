@@ -76,7 +76,7 @@ export const markTaskDoneHandler = async (
         error: {
           code: "STATUS_NOT_COMPLETED",
           message: `Task with UUID '${uuid}' was attempted to be marked done, but its status is '${updatedTask.status}' instead of 'completed'.`,
-          details:
+        details:
             "This might indicate an issue with Taskwarrior hooks, a race condition, or the 'done' command not behaving as expected.",
         },
         result: {

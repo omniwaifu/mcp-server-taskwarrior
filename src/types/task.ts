@@ -6,10 +6,10 @@ export const TaskWarriorTaskSchema = z.object({
   uuid: z.string().uuid(),
   description: z.string(),
   status: z.enum(["pending", "completed", "deleted", "waiting", "recurring"]),
-  entry: z.string().datetime(), // ISO timestamp
-  modified: z.string().datetime().optional(), // ISO timestamp
-  start: z.string().datetime().optional(), // ISO timestamp for when task was started
-  due: z.string().optional(), // ISO timestamp
+  entry: z.string(), // Accept any string format for dates from TaskWarrior
+  modified: z.string().optional(), // Accept any string format for dates
+  start: z.string().optional(), // Accept any string format for dates
+  due: z.string().optional(), // Accept any string format for dates
   priority: z.enum(["H", "M", "L"]).optional(),
   project: z
     .string()
@@ -19,13 +19,13 @@ export const TaskWarriorTaskSchema = z.object({
   annotations: z
     .array(
       z.object({
-        entry: z.string().datetime(),
+        entry: z.string(), // Accept any string format for dates
         description: z.string(),
       }),
     )
     .optional(),
-  // Add other fields from Taskwarrior JSON export as needed, e.g., id, urgency, etc.
-});
+  // Add other fields from Taskwarrior JSON export as needed
+}).passthrough(); // Allow additional fields from TaskWarrior without validation errors
 
 export type TaskWarriorTask = z.infer<typeof TaskWarriorTaskSchema>;
 
@@ -52,12 +52,12 @@ export const ListTasksRequestSchema = z.object({
     .optional(),
   tags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).optional(),
   descriptionContains: z.string().optional(), // For description.contains filter
-  dueBefore: z.string().datetime().optional(),
-  dueAfter: z.string().datetime().optional(),
-  scheduledBefore: z.string().datetime().optional(),
-  scheduledAfter: z.string().datetime().optional(),
-  modifiedBefore: z.string().datetime().optional(),
-  modifiedAfter: z.string().datetime().optional(),
+  dueBefore: z.string().optional(),
+  dueAfter: z.string().optional(),
+  scheduledBefore: z.string().optional(),
+  scheduledAfter: z.string().optional(),
+  modifiedBefore: z.string().optional(),
+  modifiedAfter: z.string().optional(),
   limit: z.number().int().positive().optional(),
   // Consider adding more filter options here as the tool evolves
 });
@@ -70,7 +70,7 @@ export type MarkTaskDoneRequest = z.infer<typeof MarkTaskDoneRequestSchema>;
 
 export const AddTaskRequestSchema = z.object({
   description: z.string(),
-  due: z.string().optional(), // ISO timestamp
+  due: z.string().optional(), // Any string format
   priority: z.enum(["H", "M", "L"]).optional(),
   project: z
     .string()
@@ -91,8 +91,8 @@ export const ModifyTaskRequestSchema = z.object({
   description: z.string().optional(),
   status: z
     .enum(["pending", "completed", "deleted", "waiting", "recurring"])
-    .optional(), // Though `task modify` might not handle all status changes directly, e.g. `done` is a command.
-  due: z.string().datetime().optional(), // Assuming ISO string. Taskwarrior is flexible here.
+    .optional(),
+  due: z.string().optional(), // Any string format
   priority: z.enum(["H", "M", "L"]).optional(),
   project: z
     .string()
@@ -100,8 +100,6 @@ export const ModifyTaskRequestSchema = z.object({
     .optional(),
   addTags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).optional(),
   removeTags: z.array(z.string().regex(/^[a-zA-Z0-9_-]+$/)).optional(),
-  // We can add more modifiable fields here based on `task help modify`
-  // For annotations, separate tools `add_annotation` and `remove_annotation` are planned.
 });
 export type ModifyTaskRequest = z.infer<typeof ModifyTaskRequestSchema>;
 

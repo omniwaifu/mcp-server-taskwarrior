@@ -62,7 +62,7 @@ export const startTaskHandler = async (
         error: {
           code: "START_TIME_MISSING",
           message: `Task with UUID '${uuid}' was attempted to be started, but it does not have a start time after the command.`,
-          details:
+        details:
             "The 'start' command might have failed silently, or Taskwarrior's state is inconsistent.",
         },
         result: {

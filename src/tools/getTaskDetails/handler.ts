@@ -30,60 +30,20 @@ interface McpToolResponse {
 }
 // --- End MCP Interfaces ---
 
+/**
+ * Gets detailed information about a specific task by its UUID
+ */
 export const getTaskDetailsHandler = async (
   args: GetTaskDetailsRequest,
-  toolName: string = "getTaskDetails", // MCP Router usually provides this
-): Promise<McpToolResponse> => {
+): Promise<TaskWarriorTask> => {
   const { uuid } = args;
 
   try {
-    const task = await getTaskByUuid(uuid); // getTaskByUuid throws if not found
-    
-    // If getTaskByUuid resolves, the task was found.
-    return {
-      tool_name: toolName,
-      status: "success",
-      result: {
-        content: [
-          {
-            type: "json",
-            data: task, // Return the single task object
-          },
-        ],
-      },
-    };
+    // getTaskByUuid throws if not found
+    return await getTaskByUuid(uuid);
   } catch (error: unknown) {
-    console.error(`Error in ${toolName} handler for UUID '${uuid}':`, error);
-    let message = `Failed to execute ${toolName}.`;
-    let details: string | undefined;
-    let errorCode = "TOOL_EXECUTION_ERROR";
-
-    if (error instanceof Error) {
-      message = error.message;
-      if (message.toLowerCase().includes("not found")) {
-        errorCode = "TASK_NOT_FOUND";
-      }
-      details = error.stack;
-    } else if (typeof error === "string") {
-      message = error;
-    }
-
-    return {
-      tool_name: toolName,
-      status: "error",
-      error: {
-        code: errorCode,
-        message: message,
-        details: details,
-      },
-      result: { // Optionally, provide a text error in content as well
-        content: [
-          {
-            type: "text",
-            text: `Error in ${toolName} for UUID '${uuid}': ${message}`,
-          },
-        ],
-      },
-    };
+    console.error(`Error in getTaskDetails handler for UUID '${uuid}':`, error);
+    // Just re-throw the error for the central handler to process
+    throw error;
   }
 };

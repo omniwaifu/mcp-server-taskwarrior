@@ -46,6 +46,9 @@ import {
   ToolHandlerSuccessResponse, // Import the new union type
 } from "./types/task.js";
 
+// Import response formatter utilities
+import { createMcpSuccessResponse, createMcpErrorResponse } from "./utils/mcpResponseFormat.js";
+
 // Pre-generate JSON schemas for tool inputs
 const listPendingTasksJsonSchema = {
   type: "object",
@@ -316,7 +319,7 @@ server.setRequestHandler(
     // Use the inferred type from local schema
     try {
       const { name, arguments: args } = request.params;
-      let result: ToolHandlerSuccessResponse | ErrorResponse | undefined;
+      let result: unknown;
 
       switch (name) {
         case "get_next_tasks": {
@@ -375,62 +378,38 @@ server.setRequestHandler(
           break;
         }
         default:
-          return {
-            content: [
-              {
-                type: "error",
-                text: `Tool "${name}" not found.`,
-              },
-            ],
-          };
+          return createMcpErrorResponse(`Tool "${name}" not found.`);
       }
 
-      // Process the result from the handler
-      if (
-        result &&
-        typeof result === "object" &&
-        "error" in result &&
-        result.error !== undefined
-      ) {
-        // It's an ErrorResponse from the handler
-        return {
-          content: [
-            {
-              type: "error",
-              text: result.error, // result.error is string
-              // Optionally include result.details if the MCP schema supports it
-            },
-          ],
-        };
-      } else if (result) {
-        // It's a ToolHandlerSuccessResponse
-        return {
-          content: [
-            {
-              type: "json",
-              json: result, // result is ToolHandlerSuccessResponse here
-            },
-          ],
-        };
-      } else {
-        // This case should ideally not be reached if handlers always return or throw.
-        // Handle cases where a tool might have legitimately no output but wasn't an error.
-        // Or, treat as an error if all tools are expected to yield some JSON or an error.
-        console.warn(
-          `Tool "${name}" executed but returned undefined or null result.`,
-        );
-        return {
-          content: [
-            {
-              type: "error", // Or a different type if appropriate for "no output"
-              text: `Tool "${name}" executed but returned no discernible result.`,
-            },
-          ],
-        };
+      // Handle results coming from our handlers
+      if (result && typeof result === "object") {
+        // Handle our custom McpToolResponse format (for backward compatibility)
+        if ("status" in result && "tool_name" in result) {
+          const mcpResult = result as any;
+          
+          if (mcpResult.status === "error" && mcpResult.error) {
+            return createMcpErrorResponse(mcpResult.error.message || "Unknown error");
+          } 
+          
+          if (mcpResult.result?.content?.[0]?.type === "json" && mcpResult.result.content[0].data) {
+            // Extract the data from our custom format
+            return createMcpSuccessResponse(mcpResult.result.content[0].data);
+          }
+        }
+        
+        // Handle native error objects
+        if ("error" in result) {
+          const errorResult = result as ErrorResponse;
+          return createMcpErrorResponse(errorResult.error);
+        }
       }
+      
+      // Default case - return whatever we got
+      return createMcpSuccessResponse(result);
     } catch (error: unknown) {
       console.error("Error processing CallToolRequest:", error);
       let errorMessage = "An unexpected error occurred.";
+      
       if (error instanceof z.ZodError) {
         errorMessage = `Invalid arguments: ${error.issues.map((i) => i.path.join(".") + ": " + i.message).join(", ")}`;
       } else if (error instanceof Error) {
@@ -438,14 +417,8 @@ server.setRequestHandler(
       } else if (typeof error === "string") {
         errorMessage = error;
       }
-      return {
-        content: [
-          {
-            type: "error",
-            text: errorMessage,
-          },
-        ],
-      };
+      
+      return createMcpErrorResponse(errorMessage);
     }
   },
 );

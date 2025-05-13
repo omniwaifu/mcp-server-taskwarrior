@@ -62,7 +62,7 @@ export const addAnnotationHandler = async (
         error: {
           code: "TASK_NOT_FOUND_POST_ANNOTATION",
           message: "Failed to fetch task after adding annotation.",
-          details:
+        details:
             "Annotation might have been added, but task data could not be retrieved post-operation.",
         },
         result: {
